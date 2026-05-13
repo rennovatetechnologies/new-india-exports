@@ -2,10 +2,17 @@
 import { useState } from "react";
 import { motion } from "framer-motion";
 import Image from "next/image";
+import Link from "next/link";
 import BookingModal from "./BookingModal";
 import EventBookingModal from "./EventBookingModal";
-import { FaCalendarAlt, FaMapMarkerAlt, FaChevronRight, FaStar } from "react-icons/fa";
-import Link from "next/link";
+import {
+  ArrowRight,
+  ShieldCheck,
+  Globe2,
+  Sparkles,
+  CheckCircle2,
+  TrendingUp,
+} from "lucide-react";
 
 export default function Hero() {
   const [open, setOpen] = useState(false);
@@ -13,201 +20,191 @@ export default function Hero() {
 
   return (
     <>
-      {/* HERO SECTION - Mobile fixed, desktop awesome */}
-      <section className="relative min-h-screen pt-20 md:pt-0 flex items-center justify-center overflow-hidden">
-        {/* Background Image */}
+      <section className="relative isolate min-h-[100svh] overflow-hidden pt-28 pb-20 md:pt-32 md:pb-28">
+        {/* Background image (very subtle) */}
         <Image
           src="/Hero.jpg"
-          alt="New India Export"
+          alt=""
           fill
           priority
-          className="object-cover"
+          className="object-cover opacity-[0.18]"
         />
+        {/* Mesh + grid + vignette */}
+        <div className="absolute inset-0 -z-10 bg-mesh" />
+        <div className="absolute inset-0 -z-10 grid-bg" />
+        <div className="absolute inset-0 -z-10 bg-gradient-to-b from-[var(--background)]/40 via-[var(--background)]/70 to-[var(--background)]" />
 
-        {/* Background Gradients */}
-        <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/50 to-transparent" />
-        <div className="absolute inset-0 bg-gradient-to-r from-black/30 via-transparent to-black/30" />
+        {/* Floating glow orbs */}
+        <div className="pointer-events-none absolute -top-32 -left-24 h-[420px] w-[420px] rounded-full bg-[var(--gold)]/15 blur-3xl" />
+        <div className="pointer-events-none absolute top-1/3 -right-24 h-[380px] w-[380px] rounded-full bg-emerald-400/10 blur-3xl" />
 
-        {/* Animated Grid Overlay - Desktop only */}
-        <div className="absolute inset-0 bg-[linear-gradient(rgba(255,255,255,0.03)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.03)_1px,transparent_1px)] bg-[size:60px_60px] opacity-50 hidden md:block" />
-
-        {/* Floating Elements - Desktop only */}
-        <motion.div
-          className="hidden lg:block absolute top-1/4 left-10 w-1 h-24 bg-gradient-to-b from-emerald-500/50 to-transparent"
-          animate={{ y: [0, -20, 0] }}
-          transition={{ duration: 3, repeat: Infinity }}
-        />
-        <motion.div
-          className="hidden lg:block absolute bottom-1/4 right-10 w-24 h-1 bg-gradient-to-r from-emerald-500/30 to-transparent"
-          animate={{ x: [0, 20, 0] }}
-          transition={{ duration: 4, repeat: Infinity }}
-        />
-
-        {/* Main Content */}
-        <motion.div
-          initial={{ opacity: 0, y: 40 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 1.2 }}
-          className="relative z-10 w-full max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-1 md:pt-0"
-        >
-          <div className="flex flex-col lg:flex-row gap-8 lg:gap-12 items-center justify-between">
-            {/* Left Column - Main Hero */}
-            <div className="text-center lg:text-left lg:w-1/2">
+        <div className="relative mx-auto max-w-7xl px-5 sm:px-6 lg:px-8">
+          <div className="grid gap-12 lg:grid-cols-12 lg:items-center">
+            {/* Left: headline */}
+            <div className="lg:col-span-7">
               <motion.div
-                initial={{ opacity: 0, x: -20 }}
-                animate={{ opacity: 1, x: 0 }}
-                transition={{ delay: 0.2 }}
-                className="inline-flex items-center gap-2 px-3 py-1.5 lg:px-4 lg:py-2 rounded-full bg-gradient-to-r from-emerald-900/30 to-emerald-950/30 border border-emerald-800/30 backdrop-blur-sm mb-4 lg:mb-6"
+                initial={{ opacity: 0, y: 12 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.6 }}
+                className="inline-flex items-center gap-2 rounded-full glass px-3.5 py-1.5 text-xs uppercase tracking-[0.18em] text-white/80"
               >
-                <FaStar className="text-emerald-400 text-xs" />
-                <span className="text-xs lg:text-sm tracking-[0.15em] lg:tracking-[0.2em] uppercase text-emerald-300 font-light">
-                  Global Trade Excellence
-                </span>
+                <Sparkles size={14} className="text-[var(--gold)]" />
+                <span>VISTARA · Global Trade OS</span>
               </motion.div>
 
-              <h1 className="text-white text-3xl sm:text-4xl md:text-5xl lg:text-6xl xl:text-7xl font-bold leading-tight drop-shadow-lg">
-                New India
-                <span className="block mt-1 lg:mt-2 bg-gradient-to-r from-emerald-200 via-emerald-400 to-emerald-300 bg-clip-text text-transparent">
-                  Export
-                </span>
-              </h1>
+              <motion.h1
+                initial={{ opacity: 0, y: 16 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.7, delay: 0.05 }}
+                className="mt-6 text-[44px] leading-[1.05] tracking-tight font-semibold sm:text-6xl lg:text-7xl"
+              >
+                Export products from
+                <br />
+                <span className="text-aurora">anywhere to everywhere.</span>
+              </motion.h1>
 
-              <p className="text-gray-200 text-base sm:text-lg lg:text-xl mt-3 lg:mt-4 max-w-2xl mx-auto lg:mx-0">
-                Exporting India's agricultural excellence to the world with precision and trust.
-              </p>
+              <motion.p
+                initial={{ opacity: 0, y: 12 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.7, delay: 0.15 }}
+                className="mt-6 max-w-xl text-base sm:text-lg text-white/65 leading-relaxed"
+              >
+                The premium consultancy & workflow platform for modern exporters.
+                Buy a plan, complete KYC, and ship globally — DGFT, ICEGATE, AD code
+                and compliance handled in one elegant flow.
+              </motion.p>
 
               <motion.div
-                initial={{ opacity: 0, y: 20 }}
+                initial={{ opacity: 0, y: 12 }}
                 animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: 0.6 }}
-                className="mt-6 lg:mt-8"
+                transition={{ duration: 0.7, delay: 0.25 }}
+                className="mt-8 flex flex-col sm:flex-row gap-3"
               >
-                <motion.button
-                  whileHover={{ scale: 1.05 }}
-                  whileTap={{ scale: 0.97 }}
-                  onClick={() => setOpen(true)}
+                <button
                   type="button"
-                  className="px-6 py-3.5 lg:px-8 lg:py-4 bg-gradient-to-r from-emerald-600 to-emerald-500 text-white font-semibold rounded-full shadow-lg shadow-emerald-500/25 hover:shadow-emerald-500/40 transition-all duration-300 flex items-center gap-2 mx-auto lg:mx-0 w-full sm:w-auto justify-center"
+                  onClick={() => setOpen(true)}
+                  className="btn-gold group inline-flex items-center justify-center gap-2 rounded-full px-6 py-3.5 text-sm font-semibold"
                 >
-                  <span className="text-sm lg:text-base">Book Your Shipment</span>
-                  <FaChevronRight className="text-xs lg:text-sm" />
-                </motion.button>
+                  Start Your Export Journey
+                  <ArrowRight size={16} className="transition-transform group-hover:translate-x-0.5" />
+                </button>
+                <Link
+                  href="#plans"
+                  className="btn-ghost inline-flex items-center justify-center gap-2 rounded-full px-6 py-3.5 text-sm font-medium"
+                >
+                  Explore Plans
+                </Link>
+              </motion.div>
+
+              {/* Trust strip */}
+              <motion.div
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                transition={{ duration: 0.8, delay: 0.4 }}
+                className="mt-10 flex flex-wrap items-center gap-x-6 gap-y-3 text-xs text-white/55"
+              >
+                <span className="inline-flex items-center gap-2"><ShieldCheck size={14} className="text-[var(--gold)]" /> DGFT · ICEGATE compliant</span>
+                <span className="inline-flex items-center gap-2"><Globe2 size={14} className="text-emerald-300" /> 30+ countries served</span>
+                <span className="inline-flex items-center gap-2"><CheckCircle2 size={14} className="text-cyan-300" /> 1,200+ exporters onboarded</span>
               </motion.div>
             </div>
 
-            {/* Right Column - Event Highlight */}
+            {/* Right: hero card */}
             <motion.div
-              initial={{ opacity: 0, x: 20 }}
-              animate={{ opacity: 1, x: 0 }}
-              transition={{ delay: 0.4 }}
-              className="w-full lg:w-1/2 max-w-lg mt-6 lg:mt-0"
+              initial={{ opacity: 0, y: 18 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.7, delay: 0.2 }}
+              className="lg:col-span-5"
             >
-              {/* Reduced padding for mobile: p-4 (mobile) -> p-6 (tablet) -> p-8 (desktop) */}
-              <div className="p-4 sm:p-6 lg:p-8 rounded-2xl bg-gradient-to-br from-neutral-900/95 to-black/95 backdrop-blur-md border border-emerald-800/30 shadow-2xl">
-                {/* Event Badge */}
-                <div className="flex items-center gap-2 mb-3 lg:mb-4">
-                  <div className="p-1.5 rounded-lg bg-emerald-900/30">
-                    <FaCalendarAlt className="text-emerald-400 text-sm lg:text-base" />
+              <div className="relative animate-float-y">
+                <div className="absolute -inset-px rounded-[28px] bg-gradient-to-br from-[var(--gold)]/40 via-white/10 to-emerald-400/20 opacity-60 blur-xl" />
+                <div className="glass-card relative p-6 sm:p-7">
+                  <div className="flex items-center justify-between">
+                    <div className="inline-flex items-center gap-2 text-xs text-white/60">
+                      <span className="h-2 w-2 rounded-full bg-emerald-400 shadow-[0_0_10px_rgba(52,211,153,0.8)]" />
+                      Workflow live
+                    </div>
+                    <span className="text-[10px] uppercase tracking-widest text-white/45">Case · NIE-2841</span>
                   </div>
-                  <span className="text-sm lg:text-base font-medium text-emerald-300">Upcoming Event</span>
-                </div>
 
-                {/* Slightly smaller heading for mobile */}
-                <h2 className="text-lg sm:text-xl md:text-2xl lg:text-3xl xl:text-4xl font-serif text-white mb-3 lg:mb-4">
-                  New India Export X Virtual Shipment Workshop (5 Days)
-                </h2>
+                  <h3 className="mt-5 text-xl font-semibold">Spices · 2 × 20ft FCL</h3>
+                  <p className="text-sm text-white/55">Nagpur → Rotterdam · ETA 18 days</p>
 
-                {/* Reduced margin and smaller text for mobile */}
-                <p className="text-neutral-300 text-xs sm:text-sm lg:text-base mb-3 lg:mb-6 leading-relaxed">
-                  Master the complete export cycle in this intensive 5-day workshop designed for future-ready global trade entrepreneurs.
-                </p>
+                  {/* Stepper */}
+                  <ol className="mt-6 space-y-3">
+                    {[
+                      { label: "Plan purchased", done: true },
+                      { label: "KYC verified", done: true },
+                      { label: "DGFT · IEC issued", done: true },
+                      { label: "ICEGATE registration", current: true },
+                      { label: "Shipment ready", done: false },
+                    ].map((s, i) => (
+                      <li key={i} className="flex items-center gap-3">
+                        <span
+                          className={`flex h-6 w-6 items-center justify-center rounded-full border text-[10px] font-semibold ${
+                            s.done
+                              ? "bg-emerald-400/15 border-emerald-400/40 text-emerald-300"
+                              : s.current
+                              ? "bg-[var(--gold)]/15 border-[var(--gold)]/50 text-[var(--gold)] shadow-[0_0_18px_rgba(244,196,106,0.45)]"
+                              : "bg-white/5 border-white/10 text-white/40"
+                          }`}
+                        >
+                          {s.done ? "✓" : i + 1}
+                        </span>
+                        <span className={`text-sm ${s.done ? "text-white/85" : s.current ? "text-white" : "text-white/40"}`}>
+                          {s.label}
+                        </span>
+                        {s.current && (
+                          <span className="ml-auto text-[10px] uppercase tracking-wider text-[var(--gold)]">In progress</span>
+                        )}
+                      </li>
+                    ))}
+                  </ol>
 
-                {/* Event Details - Reduced spacing for mobile */}
-                <div className="space-y-2 sm:space-y-3 lg:space-y-4 mb-3 lg:mb-6">
-                  <div className="flex items-center gap-2">
-                    <div className="p-1.5 sm:p-2 rounded-lg bg-neutral-800/50">
-                      <FaCalendarAlt className="text-emerald-400 text-xs sm:text-sm lg:text-base" />
+                  {/* Progress bar */}
+                  <div className="mt-6">
+                    <div className="flex items-center justify-between text-xs text-white/55">
+                      <span>Onboarding progress</span>
+                      <span className="text-white/85">68%</span>
                     </div>
-                    <div>
-                      <div className="font-medium text-white text-xs sm:text-sm lg:text-base">02 – 06 May 2026</div>
-                      <div className="text-xs text-neutral-400">Saturday – Wednesday • 11:00 AM – 2:00 PM</div>
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <div className="p-1.5 sm:p-2 rounded-lg bg-neutral-800/50">
-                      <FaMapMarkerAlt className="text-emerald-400 text-xs sm:text-sm lg:text-base" />
-                    </div>
-                    <div>
-                      <div className="font-medium text-white text-xs sm:text-sm lg:text-base">Online Workshop</div>
-                      <div className="text-xs text-neutral-400">5-Day Intensive Access</div>
-                    </div>
-                  </div>
-                </div>
-                {/* Pricing Section */}
-                <div className="relative mb-6 group">
-                  <div className="absolute -inset-1 bg-gradient-to-r from-emerald-600 to-emerald-400 rounded-2xl blur opacity-25 group-hover:opacity-50 transition duration-1000"></div>
-                  <div className="relative flex items-center justify-between p-4 sm:p-5 rounded-xl bg-black border border-emerald-500/30 backdrop-blur-xl">
-                    <div className="flex flex-col">
-                      <span className="inline-block px-2 py-0.5 rounded-md bg-emerald-500/20 text-emerald-400 text-[10px] font-bold uppercase tracking-wider mb-2 w-fit">
-                        Special Offer
-                      </span>
-                      <div className="flex items-baseline gap-3">
-                        <span className="text-3xl sm:text-4xl font-black text-white tracking-tight">₹6399</span>
-                        <span className="text-lg text-neutral-500 line-through decoration-emerald-500 decoration-2">₹34999</span>
-                      </div>
-                    </div>
-                    <div className="hidden sm:block">
-                      <div className="px-3 py-1 rounded-full bg-emerald-500 text-black text-xs font-bold">
-                        80% OFF
+                    <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-white/10">
+                      <div className="relative h-full w-[68%] rounded-full bg-gradient-to-r from-[var(--gold)] to-emerald-300">
+                        <div className="absolute inset-0 shimmer" />
                       </div>
                     </div>
                   </div>
-                </div>
 
-                {/* Action Buttons - Reduced padding for mobile */}
-                <div className="flex flex-col sm:flex-row gap-2">
-                  <Link
-                    href="/events"
-                    className="group px-4 py-2.5 sm:px-5 sm:py-3 lg:px-6 lg:py-3 rounded-full bg-gradient-to-r from-emerald-600 to-emerald-500 text-black font-medium text-xs sm:text-sm flex items-center justify-center gap-2 overflow-hidden transition-all hover:shadow-lg hover:shadow-emerald-500/25"
-                  >
-                    <span className="relative z-10">View Event Details</span>
-                    <FaChevronRight className="relative z-10 text-xs transition-transform group-hover:translate-x-1" />
-                  </Link>
+                  <div className="mt-6 grid grid-cols-3 gap-3">
+                    <Stat label="Days saved" value="14" />
+                    <Stat label="Docs verified" value="22" />
+                    <Stat label="Status" value="On track" tone="emerald" />
+                  </div>
 
                   <button
                     onClick={() => setEventOpen(true)}
-                    className="group px-4 py-2.5 sm:px-5 sm:py-3 lg:px-6 lg:py-3 rounded-full border border-emerald-800/50 bg-emerald-900/20 text-emerald-300 font-medium text-xs sm:text-sm flex items-center justify-center gap-2 hover:border-emerald-700/50 hover:bg-emerald-900/30 transition-all"
+                    className="mt-6 inline-flex w-full items-center justify-center gap-2 rounded-xl border border-white/10 bg-white/[0.03] px-4 py-2.5 text-sm text-white/80 hover:bg-white/[0.06] transition"
                   >
-                    <span>Reserve Your Seat</span>
+                    <TrendingUp size={14} className="text-[var(--gold)]" />
+                    Reserve seat · Virtual Shipment Workshop
                   </button>
-
-                  <a
-                    href="/brochure/NIE X VIRTUAL SHIPMENT WORKSHOP (5 DAYS) BROCHURE.pdf"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="group px-4 py-2.5 sm:px-5 sm:py-3 lg:px-6 lg:py-3 rounded-full border border-neutral-800 bg-neutral-900/40 text-neutral-400 font-medium text-xs sm:text-sm flex items-center justify-center gap-2 hover:border-emerald-800/50 transition-all"
-                  >
-                    <span>Workshop Brochure</span>
-                  </a>
                 </div>
               </div>
             </motion.div>
           </div>
-
-          {/* Scroll Indicator - Desktop only */}
-          <motion.div
-            animate={{ y: [0, 10, 0] }}
-            transition={{ duration: 2, repeat: Infinity }}
-            className="absolute bottom-4 lg:bottom-8 left-1/2 transform -translate-x-1/2 hidden lg:block"
-          >
-            <div className="w-[1px] h-12 lg:h-16 bg-gradient-to-b from-emerald-500/50 via-emerald-500/20 to-transparent" />
-          </motion.div>
-        </motion.div>
+        </div>
       </section>
 
-      {/* BOOKING MODAL */}
       <BookingModal open={open} setOpen={setOpen} />
       <EventBookingModal open={eventOpen} setOpen={setEventOpen} />
     </>
+  );
+}
+
+function Stat({ label, value, tone }) {
+  return (
+    <div className="rounded-xl border border-white/10 bg-white/[0.02] p-3">
+      <div className="text-[10px] uppercase tracking-wider text-white/45">{label}</div>
+      <div className={`mt-1 text-base font-semibold ${tone === "emerald" ? "text-emerald-300" : "text-white"}`}>{value}</div>
+    </div>
   );
 }
