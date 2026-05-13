@@ -149,8 +149,8 @@ export default function Navbar() {
       <nav
         role="navigation"
         className={`fixed inset-x-0 top-0 z-50 transition-colors duration-500 ${scrolled || mobileOpen
-          ? "bg-zinc-950/95 border-b border-white/10"
-          : "bg-gradient-to-b from-zinc-950/80 to-transparent"
+          ? "bg-[var(--background)]/85 backdrop-blur-xl border-b border-white/10"
+          : "bg-gradient-to-b from-[var(--background)]/70 to-transparent backdrop-blur-md"
           }`}
       >
         <div className="max-w-7xl mx-auto px-5 sm:px-6 lg:px-8">
@@ -159,10 +159,11 @@ export default function Navbar() {
             <Link
               href="/"
               className="flex items-center gap-2 focus:outline-none focus-visible:ring-2 focus-visible:ring-white/30 rounded-md"
-              aria-label="New India Export Home"
+              aria-label="VISTARA Home"
             >
               <span className="text-xl md:text-2xl font-semibold tracking-tight text-white">
-                New India <span className="text-white/60">Export</span>
+                <span className="text-gold-gradient">VISTARA</span>
+                <span className="text-white/40 font-normal hidden sm:inline"> · New India Export</span>
               </span>
             </Link>
 
