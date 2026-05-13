@@ -1,26 +1,124 @@
 @import "tailwindcss";
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  /* VISTARA dark palette */
+  --background: #07090d;
+  --background-elev: #0b0f16;
+  --surface: #0f1421;
+  --foreground: #f4f6fb;
+  --muted: #8a93a6;
+  --muted-2: #5a6478;
+  --border: rgba(255, 255, 255, 0.08);
+  --border-strong: rgba(255, 255, 255, 0.14);
+
+  /* Brand accents */
+  --gold: #f4c46a;
+  --gold-2: #e0a64a;
+  --amber: #ffb547;
+  --emerald: #34d399;
+  --cyan: #67e8f9;
+  --navy: #0a1428;
+
+  --grad-gold: linear-gradient(135deg, #f7d488 0%, #d99c3e 100%);
+  --grad-aurora: linear-gradient(135deg, #f4c46a 0%, #e0a64a 35%, #34d399 100%);
+  --grad-mesh:
+    radial-gradient(60% 80% at 15% 10%, rgba(244,196,106,0.18) 0%, transparent 60%),
+    radial-gradient(50% 70% at 85% 0%, rgba(52,211,153,0.12) 0%, transparent 60%),
+    radial-gradient(80% 60% at 50% 100%, rgba(99,102,241,0.10) 0%, transparent 70%);
+
+  --shadow-glow: 0 30px 80px -30px rgba(244, 196, 106, 0.35);
+  --shadow-card: 0 20px 60px -20px rgba(0, 0, 0, 0.6);
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --color-muted: var(--muted);
+  --color-border: var(--border);
+  --color-gold: var(--gold);
+  --color-emerald: var(--emerald);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
-}
-
-body {
+html, body {
   background: var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: ui-sans-serif, system-ui, -apple-system, "Inter", "SF Pro Display", "Segoe UI", sans-serif;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
 }
+
+/* === Reusable utilities === */
+.glass {
+  background: linear-gradient(180deg, rgba(255,255,255,0.04), rgba(255,255,255,0.02));
+  border: 1px solid var(--border);
+  backdrop-filter: blur(18px) saturate(140%);
+  -webkit-backdrop-filter: blur(18px) saturate(140%);
+}
+.glass-strong {
+  background: linear-gradient(180deg, rgba(255,255,255,0.06), rgba(255,255,255,0.02));
+  border: 1px solid var(--border-strong);
+  backdrop-filter: blur(24px) saturate(150%);
+  -webkit-backdrop-filter: blur(24px) saturate(150%);
+  box-shadow: var(--shadow-card);
+}
+.glass-card {
+  background: linear-gradient(180deg, rgba(20,24,36,0.7), rgba(10,14,24,0.6));
+  border: 1px solid var(--border);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border-radius: 24px;
+}
+.text-gold-gradient {
+  background: var(--grad-gold);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+.text-aurora {
+  background: var(--grad-aurora);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+.bg-mesh { background-image: var(--grad-mesh); }
+.btn-gold {
+  background: var(--grad-gold);
+  color: #1a1206;
+  border: 1px solid rgba(255,255,255,0.2);
+  box-shadow: 0 10px 30px -10px rgba(244,196,106,0.45), inset 0 1px 0 rgba(255,255,255,0.4);
+  transition: transform .2s ease, box-shadow .2s ease, filter .2s ease;
+}
+.btn-gold:hover { transform: translateY(-1px); filter: brightness(1.05); box-shadow: 0 16px 40px -12px rgba(244,196,106,0.55), inset 0 1px 0 rgba(255,255,255,0.5); }
+.btn-ghost {
+  background: rgba(255,255,255,0.04);
+  color: var(--foreground);
+  border: 1px solid var(--border-strong);
+  backdrop-filter: blur(12px);
+  transition: background .2s ease, border-color .2s ease, transform .2s ease;
+}
+.btn-ghost:hover { background: rgba(255,255,255,0.08); border-color: rgba(255,255,255,0.25); transform: translateY(-1px); }
+
+.divider-glow {
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(244,196,106,0.4), transparent);
+}
+
+.grid-bg {
+  background-image:
+    linear-gradient(rgba(255,255,255,0.04) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255,255,255,0.04) 1px, transparent 1px);
+  background-size: 56px 56px;
+  mask-image: radial-gradient(ellipse 70% 60% at 50% 0%, #000 30%, transparent 80%);
+}
+
+@keyframes float-y { 0%,100% { transform: translateY(0) } 50% { transform: translateY(-10px) } }
+.animate-float-y { animation: float-y 6s ease-in-out infinite; }
+
+@keyframes shimmer { 0% { background-position: -200% 0 } 100% { background-position: 200% 0 } }
+.shimmer {
+  background: linear-gradient(90deg, transparent, rgba(244,196,106,0.25), transparent);
+  background-size: 200% 100%;
+  animation: shimmer 2.4s linear infinite;
+}
+
+::selection { background: rgba(244,196,106,0.35); color: #fff; }
