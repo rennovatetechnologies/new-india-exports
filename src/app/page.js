@@ -1,20 +1,21 @@
-import AboutShowcase from "@/components/AboutShowcase";
-import AboutUsSection from "@/components/Aboutus";
 import Hero from "@/components/Hero";
+import AboutUsSection from "@/components/Aboutus";
+import WorkflowSection from "@/components/WorkflowSection";
+import WhyChooseUs from "@/components/WhyChooseUs";
 import PlansSection from "@/components/PlansSection";
+import TestimonialsSection from "@/components/TestimonialsSection";
 import ProductsSection from "@/components/ProductsSection";
-import AchievementsSummits from "@/components/AchievementsSummits";
-
 
 export default function Home() {
   return (
     <>
-      <Hero/>
-      <AboutUsSection/>
-      <AboutShowcase/>
-      <AchievementsSummits/>
-      <PlansSection/>
-      <ProductsSection/>
+      <Hero />
+      <AboutUsSection />
+      <WorkflowSection />
+      <WhyChooseUs />
+      <PlansSection />
+      <ProductsSection />
+      <TestimonialsSection />
     </>
   );
 }
