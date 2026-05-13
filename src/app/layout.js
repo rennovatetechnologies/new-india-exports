@@ -4,17 +4,21 @@ import "./globals.css";
 import Navbar from "@/components/Navbar";
 
 export const metadata = {
-  title: "New India Export",
-  description: "Exporting quality products worldwide",
+  title: "VISTARA — Export Products From Anywhere To Everywhere",
+  description:
+    "VISTARA by New India Export — the premium export consultancy & workflow automation platform. Plans, KYC, DGFT, ICEGATE and shipment tracking in one place.",
 };
 
 export default function RootLayout({ children }) {
   return (
-    <html lang="en" suppressHydrationWarning>
-      <body className="bg-white text-gray-900 dark:bg-black dark:text-gray-100" suppressHydrationWarning>
+    <html lang="en" suppressHydrationWarning className="dark">
+      <body
+        className="min-h-screen bg-[var(--background)] text-[var(--foreground)] antialiased"
+        suppressHydrationWarning
+      >
         <Script src="https://checkout.razorpay.com/v1/checkout.js" strategy="beforeInteractive" />
         <Navbar />
-        <main>{children}</main>
+        <main className="relative">{children}</main>
         <Footer />
       </body>
     </html>
