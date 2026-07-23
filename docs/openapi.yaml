@@ -1,0 +1,1530 @@
+openapi: 3.0.3
+info:
+  title: New India Exports API
+  description: |
+    Express backend for VISTARA / New India Exports.
+
+    **Auth:** Most protected routes expect `Authorization: Bearer <JWT>`.
+    Customer JWTs come from OTP verify / customer login; staff JWTs from staff login.
+  version: 1.0.0
+servers:
+  - url: http://127.0.0.1:5001
+    description: Local
+  - url: /
+    description: Relative (same host)
+tags:
+  - name: Health
+  - name: Auth
+  - name: Staff
+  - name: RBAC
+  - name: KYC
+  - name: Cases
+  - name: Vault
+  - name: Payments
+  - name: Plans
+  - name: Billing
+  - name: Events
+  - name: Me
+  - name: Notifications
+  - name: Admin
+  - name: Support
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  schemas:
+    SuccessMessage:
+      type: object
+      properties:
+        success:
+          type: boolean
+        message:
+          type: string
+    Error:
+      type: object
+      properties:
+        success:
+          type: boolean
+          example: false
+        message:
+          type: string
+    TokenResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+        token:
+          type: string
+        user:
+          type: object
+    OtpSendRequest:
+      type: object
+      required: [email]
+      properties:
+        email:
+          type: string
+          format: email
+        purpose:
+          type: string
+          description: Optional purpose tag (signup, login, etc.)
+    OtpVerifyRequest:
+      type: object
+      required: [email, otp]
+      properties:
+        email:
+          type: string
+          format: email
+        otp:
+          type: string
+    StaffLoginRequest:
+      type: object
+      required: [email, password]
+      properties:
+        email:
+          type: string
+          format: email
+        password:
+          type: string
+          format: password
+    CreateOrderRequest:
+      type: object
+      properties:
+        amount:
+          type: number
+          description: Amount in paise (optional; server may use defaults)
+        currency:
+          type: string
+          default: INR
+        receipt:
+          type: string
+        notes:
+          type: object
+          additionalProperties: true
+    VerifyPaymentRequest:
+      type: object
+      required: [razorpay_order_id, razorpay_payment_id, razorpay_signature]
+      properties:
+        razorpay_order_id:
+          type: string
+        razorpay_payment_id:
+          type: string
+        razorpay_signature:
+          type: string
+
+paths:
+  /:
+    get:
+      tags: [Health]
+      summary: Health check
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+
+  /api/auth/otp/send:
+    post:
+      tags: [Auth]
+      summary: Send OTP to email
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/OtpSendRequest'
+      responses:
+        '200':
+          description: OTP sent (dev may echo OTP)
+        '429':
+          description: Rate limited
+
+  /api/auth/otp/resend:
+    post:
+      tags: [Auth]
+      summary: Resend OTP
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/OtpSendRequest'
+      responses:
+        '200':
+          description: OTP resent
+
+  /api/auth/otp/verify:
+    post:
+      tags: [Auth]
+      summary: Verify OTP and issue JWT
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/OtpVerifyRequest'
+      responses:
+        '200':
+          description: Verified
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TokenResponse'
+
+  /api/auth/customer/signup:
+    post:
+      tags: [Auth]
+      summary: Customer signup
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                email: { type: string }
+                name: { type: string }
+                phone: { type: string }
+                company: { type: string }
+      responses:
+        '200':
+          description: Signup result
+
+  /api/auth/customer/login:
+    post:
+      tags: [Auth]
+      summary: Customer login (OTP flow companion)
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                email: { type: string }
+      responses:
+        '200':
+          description: Login initiated / success
+
+  /api/auth/staff/login:
+    post:
+      tags: [Auth]
+      summary: Staff email/password login
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/StaffLoginRequest'
+      responses:
+        '200':
+          description: Staff JWT
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TokenResponse'
+
+  /api/auth/staff/register:
+    post:
+      tags: [Auth]
+      summary: Staff registration / access request
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                email: { type: string }
+                password: { type: string }
+                name: { type: string }
+                role: { type: string }
+      responses:
+        '200':
+          description: Registered or pending approval
+
+  /api/auth/me:
+    get:
+      tags: [Auth]
+      summary: Current auth user
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Current user
+
+  /api/auth/logout:
+    post:
+      tags: [Auth]
+      summary: Logout (client discards token)
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Logged out
+
+  /api/staff/access-requests:
+    get:
+      tags: [Staff]
+      summary: List staff access requests
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Access requests
+
+  /api/staff/access-requests/{reqId}:
+    get:
+      tags: [Staff]
+      summary: Get access request
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: reqId
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: Access request
+    patch:
+      tags: [Staff]
+      summary: Approve/reject access request
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: reqId
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                status: { type: string }
+                role: { type: string }
+      responses:
+        '200':
+          description: Updated
+
+  /api/staff/users:
+    get:
+      tags: [Staff]
+      summary: List staff users
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Staff users
+
+  /api/staff/users/{email}/permissions:
+    patch:
+      tags: [Staff]
+      summary: Update staff permissions
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: email
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                permissions:
+                  type: array
+                  items: { type: string }
+      responses:
+        '200':
+          description: Updated
+
+  /api/rbac/matrix:
+    get:
+      tags: [RBAC]
+      summary: Permission matrix
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Role/permission matrix
+
+  /api/kyc/me:
+    get:
+      tags: [KYC]
+      summary: My KYC profile
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: KYC state
+
+  /api/kyc/me/business:
+    put:
+      tags: [KYC]
+      summary: Update business KYC fields
+      security:
+        - bearerAuth: []
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+      responses:
+        '200':
+          description: Updated
+
+  /api/kyc/me/identity:
+    put:
+      tags: [KYC]
+      summary: Update identity KYC fields
+      security:
+        - bearerAuth: []
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+      responses:
+        '200':
+          description: Updated
+
+  /api/kyc/me/documents/{docKey}:
+    post:
+      tags: [KYC]
+      summary: Upload KYC document
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: docKey
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                file:
+                  type: string
+                  format: binary
+      responses:
+        '200':
+          description: Uploaded
+    delete:
+      tags: [KYC]
+      summary: Delete KYC document
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: docKey
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: Deleted
+
+  /api/kyc/me/submit:
+    post:
+      tags: [KYC]
+      summary: Submit KYC for review
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Submitted
+
+  /api/kyc/queue:
+    get:
+      tags: [KYC]
+      summary: KYC review queue (staff)
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Queue
+
+  /api/kyc/{customerId}/approve:
+    post:
+      tags: [KYC]
+      summary: Approve customer KYC
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: customerId
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: Approved
+
+  /api/kyc/{customerId}/reject:
+    post:
+      tags: [KYC]
+      summary: Reject customer KYC
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: customerId
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                reason: { type: string }
+      responses:
+        '200':
+          description: Rejected
+
+  /api/kyc/{customerId}/documents/{docKey}:
+    get:
+      tags: [KYC]
+      summary: Download customer KYC document (staff)
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: customerId
+          in: path
+          required: true
+          schema: { type: string }
+        - name: docKey
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: File stream
+
+  /api/cases:
+    get:
+      tags: [Cases]
+      summary: List cases
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Cases
+    post:
+      tags: [Cases]
+      summary: Create case
+      security:
+        - bearerAuth: []
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+      responses:
+        '200':
+          description: Created
+
+  /api/cases/{caseId}:
+    get:
+      tags: [Cases]
+      summary: Get case
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: caseId
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: Case
+    patch:
+      tags: [Cases]
+      summary: Update case
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: caseId
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+      responses:
+        '200':
+          description: Updated
+
+  /api/cases/{caseId}/stage/approve:
+    post:
+      tags: [Cases]
+      summary: Approve current stage
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: caseId
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: Stage approved
+
+  /api/cases/{caseId}/stage/reject:
+    post:
+      tags: [Cases]
+      summary: Reject current stage
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: caseId
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                reason: { type: string }
+      responses:
+        '200':
+          description: Stage rejected
+
+  /api/cases/{caseId}/activity:
+    get:
+      tags: [Cases]
+      summary: Case activity log
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: caseId
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: Activity
+    post:
+      tags: [Cases]
+      summary: Add case activity note
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: caseId
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                message: { type: string }
+      responses:
+        '200':
+          description: Added
+
+  /api/workspace/search:
+    get:
+      tags: [Cases]
+      summary: Workspace search
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: q
+          in: query
+          schema: { type: string }
+      responses:
+        '200':
+          description: Search results
+
+  /api/dashboard/overview:
+    get:
+      tags: [Cases]
+      summary: Dashboard overview
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Overview
+
+  /api/ops/stats:
+    get:
+      tags: [Cases]
+      summary: Operations stats
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Ops stats
+
+  /api/cases/{caseId}/documents:
+    get:
+      tags: [Vault]
+      summary: List case vault documents
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: caseId
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: Documents
+
+  /api/cases/{caseId}/documents/{docId}/upload:
+    post:
+      tags: [Vault]
+      summary: Upload vault document
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: caseId
+          in: path
+          required: true
+          schema: { type: string }
+        - name: docId
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                file:
+                  type: string
+                  format: binary
+      responses:
+        '200':
+          description: Uploaded
+
+  /api/cases/{caseId}/documents/{docId}/content:
+    get:
+      tags: [Vault]
+      summary: Download vault document content
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: caseId
+          in: path
+          required: true
+          schema: { type: string }
+        - name: docId
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: File stream
+
+  /api/cases/{caseId}/documents/{docId}/approve:
+    post:
+      tags: [Vault]
+      summary: Approve vault document
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: caseId
+          in: path
+          required: true
+          schema: { type: string }
+        - name: docId
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: Approved
+
+  /api/cases/{caseId}/documents/{docId}/reject:
+    post:
+      tags: [Vault]
+      summary: Reject vault document
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: caseId
+          in: path
+          required: true
+          schema: { type: string }
+        - name: docId
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                reason: { type: string }
+      responses:
+        '200':
+          description: Rejected
+
+  /api/cases/{caseId}/documents/{docId}/comment:
+    post:
+      tags: [Vault]
+      summary: Comment on vault document
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: caseId
+          in: path
+          required: true
+          schema: { type: string }
+        - name: docId
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                comment: { type: string }
+      responses:
+        '200':
+          description: Commented
+
+  /api/cases/{caseId}/documents/bundle:
+    get:
+      tags: [Vault]
+      summary: Download vault ZIP bundle
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: caseId
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: ZIP stream
+
+  /api/cases/{caseId}/document-checklist:
+    put:
+      tags: [Vault]
+      summary: Update document checklist
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: caseId
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+      responses:
+        '200':
+          description: Updated
+
+  /api/create-order:
+    post:
+      tags: [Payments]
+      summary: Create Razorpay order (alias)
+      security:
+        - bearerAuth: []
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateOrderRequest'
+      responses:
+        '200':
+          description: Order created
+
+  /api/payment/create-order:
+    post:
+      tags: [Payments]
+      summary: Create Razorpay order
+      security:
+        - bearerAuth: []
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateOrderRequest'
+      responses:
+        '200':
+          description: Order created
+
+  /api/verify-payment:
+    post:
+      tags: [Payments]
+      summary: Verify Razorpay payment (alias)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/VerifyPaymentRequest'
+      responses:
+        '200':
+          description: Verified
+
+  /api/payment/verify:
+    post:
+      tags: [Payments]
+      summary: Verify Razorpay payment
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/VerifyPaymentRequest'
+      responses:
+        '200':
+          description: Verified
+
+  /api/bookings:
+    post:
+      tags: [Payments]
+      summary: Create booking payment
+      security:
+        - bearerAuth: []
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+      responses:
+        '200':
+          description: Booking created
+
+  /api/payments/{paymentId}:
+    get:
+      tags: [Payments]
+      summary: Get payment by id
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: paymentId
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: Payment
+
+  /api/config/public:
+    get:
+      tags: [Payments]
+      summary: Public config (Razorpay key id, etc.)
+      responses:
+        '200':
+          description: Public config
+
+  /api/webhooks/razorpay:
+    post:
+      tags: [Payments]
+      summary: Razorpay webhook (raw body + signature)
+      parameters:
+        - name: X-Razorpay-Signature
+          in: header
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+      responses:
+        '200':
+          description: Accepted
+        '400':
+          description: Invalid signature
+
+  /api/plans:
+    get:
+      tags: [Plans]
+      summary: List plans
+      responses:
+        '200':
+          description: Plans
+    post:
+      tags: [Plans]
+      summary: Create plan (admin)
+      security:
+        - bearerAuth: []
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+      responses:
+        '200':
+          description: Created
+
+  /api/plans/{planId}:
+    put:
+      tags: [Plans]
+      summary: Update plan (admin)
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: planId
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+      responses:
+        '200':
+          description: Updated
+    delete:
+      tags: [Plans]
+      summary: Delete plan (admin)
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: planId
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: Deleted
+
+  /api/billing/subscription:
+    get:
+      tags: [Billing]
+      summary: My subscription
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Subscription
+
+  /api/billing/checkout:
+    post:
+      tags: [Billing]
+      summary: Start billing checkout
+      security:
+        - bearerAuth: []
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                planId: { type: string }
+      responses:
+        '200':
+          description: Checkout session / order
+
+  /api/billing/invoices:
+    get:
+      tags: [Billing]
+      summary: List invoices
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Invoices
+
+  /api/billing/invoices/export.csv:
+    get:
+      tags: [Billing]
+      summary: Export invoices CSV
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: CSV
+
+  /api/billing/invoices/{invoiceId}.pdf:
+    get:
+      tags: [Billing]
+      summary: Download invoice PDF
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: invoiceId
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: PDF
+
+  /api/billing/ledger:
+    get:
+      tags: [Billing]
+      summary: Billing ledger
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Ledger
+
+  /api/pricing/templates:
+    get:
+      tags: [Billing]
+      summary: Pricing templates (admin)
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Templates
+
+  /api/events:
+    get:
+      tags: [Events]
+      summary: List events
+      responses:
+        '200':
+          description: Events
+    post:
+      tags: [Events]
+      summary: Create event (admin)
+      security:
+        - bearerAuth: []
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+      responses:
+        '200':
+          description: Created
+
+  /api/events/{eventId}:
+    put:
+      tags: [Events]
+      summary: Update event
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: eventId
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+      responses:
+        '200':
+          description: Updated
+    delete:
+      tags: [Events]
+      summary: Delete event
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: eventId
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: Deleted
+
+  /api/events/{eventId}/image:
+    post:
+      tags: [Events]
+      summary: Upload event image
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: eventId
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                file:
+                  type: string
+                  format: binary
+      responses:
+        '200':
+          description: Uploaded
+
+  /api/events/registrations/me:
+    get:
+      tags: [Events]
+      summary: My event registrations
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Registrations
+
+  /api/events/{eventId}/register:
+    post:
+      tags: [Events]
+      summary: Register for event
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: eventId
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: Registered
+
+  /api/workshops/virtual-shipment/register:
+    post:
+      tags: [Events]
+      summary: Register for virtual shipment workshop
+      security:
+        - bearerAuth: []
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+      responses:
+        '200':
+          description: Registered
+
+  /api/me/profile:
+    get:
+      tags: [Me]
+      summary: Get profile
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Profile
+    put:
+      tags: [Me]
+      summary: Update profile
+      security:
+        - bearerAuth: []
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+      responses:
+        '200':
+          description: Updated
+
+  /api/me/avatar:
+    post:
+      tags: [Me]
+      summary: Upload avatar
+      security:
+        - bearerAuth: []
+      requestBody:
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                file:
+                  type: string
+                  format: binary
+      responses:
+        '200':
+          description: Uploaded
+
+  /api/me/avatar-file:
+    get:
+      tags: [Me]
+      summary: Download avatar file
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Image
+
+  /api/me/company:
+    get:
+      tags: [Me]
+      summary: Get company
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Company
+    put:
+      tags: [Me]
+      summary: Update company
+      security:
+        - bearerAuth: []
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+      responses:
+        '200':
+          description: Updated
+
+  /api/me/team:
+    get:
+      tags: [Me]
+      summary: List team members
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Team
+
+  /api/me/team/invites:
+    post:
+      tags: [Me]
+      summary: Invite team member
+      security:
+        - bearerAuth: []
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                email: { type: string }
+                role: { type: string }
+      responses:
+        '200':
+          description: Invited
+
+  /api/me/team/{memberId}:
+    delete:
+      tags: [Me]
+      summary: Remove team member
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: memberId
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: Removed
+
+  /api/me/notifications:
+    get:
+      tags: [Notifications]
+      summary: Notification preferences / list (me)
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Notifications prefs
+    put:
+      tags: [Notifications]
+      summary: Update notification preferences
+      security:
+        - bearerAuth: []
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+      responses:
+        '200':
+          description: Updated
+
+  /api/notifications:
+    get:
+      tags: [Notifications]
+      summary: List notifications
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Notifications
+
+  /api/notifications/{notifId}/read:
+    post:
+      tags: [Notifications]
+      summary: Mark notification read
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: notifId
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: Marked read
+
+  /api/admin/analytics/summary:
+    get:
+      tags: [Admin]
+      summary: Analytics summary
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Summary
+
+  /api/admin/analytics/detail:
+    get:
+      tags: [Admin]
+      summary: Analytics detail
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Detail
+
+  /api/admin/audit:
+    get:
+      tags: [Admin]
+      summary: Audit log
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Audit entries
+
+  /api/admin/workflow-templates:
+    get:
+      tags: [Admin]
+      summary: List workflow templates
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Templates
+
+  /api/admin/workflow-templates/{templateId}:
+    put:
+      tags: [Admin]
+      summary: Update workflow template
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: templateId
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+      responses:
+        '200':
+          description: Updated
+
+  /api/admin/pending-counts:
+    get:
+      tags: [Admin]
+      summary: Pending action counts
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Counts
+
+  /api/support/faqs:
+    get:
+      tags: [Support]
+      summary: List FAQs
+      responses:
+        '200':
+          description: FAQs
+
+  /api/support/articles:
+    get:
+      tags: [Support]
+      summary: List support articles
+      responses:
+        '200':
+          description: Articles
+
+  /api/support/concierge/book:
+    post:
+      tags: [Support]
+      summary: Book concierge session
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+      responses:
+        '200':
+          description: Booked
+
+  /api/support/tickets:
+    post:
+      tags: [Support]
+      summary: Create support ticket
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                subject: { type: string }
+                message: { type: string }
+                email: { type: string }
+      responses:
+        '200':
+          description: Created
+
+  /api/leads/contact:
+    post:
+      tags: [Support]
+      summary: Contact / lead form
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name: { type: string }
+                email: { type: string }
+                message: { type: string }
+                phone: { type: string }
+      responses:
+        '200':
+          description: Submitted
