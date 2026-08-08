@@ -30,6 +30,13 @@ const DOC_REVIEW = {
 };
 
 function mapProfile(body = {}) {
+  const aadhaarNumber = String(body.aadhaarNumber || body.aadhaar || '')
+    .replace(/\D/g, '')
+    .slice(0, 12);
+  const aadhaarLast4 =
+    aadhaarNumber.length === 12
+      ? aadhaarNumber.slice(-4)
+      : String(body.aadhaarLast4 || '').replace(/\D/g, '').slice(0, 4);
   return {
     legalName: body.legalName || body.legalEntityName || '',
     entityType: body.entityType || 'Private Limited',
@@ -40,7 +47,8 @@ function mapProfile(body = {}) {
     signatoryName: body.signatoryName || body.fullName || '',
     designation: body.designation || '',
     panNumber: body.panNumber || body.pan || '',
-    aadhaarLast4: body.aadhaarLast4 || '',
+    aadhaarNumber,
+    aadhaarLast4,
   };
 }
 
@@ -328,10 +336,11 @@ router.get(
       .find({ kycStatus: cases.KYC_STATUS.SUBMITTED })
       .sort({ kycSubmittedAt: 1 })
       .toArray();
+    const data = await Promise.all(rows.map((r) => cases.withWorkflowStages(r)));
     return res.json({
       success: true,
-      data: rows.map(cases.publicCase),
-      items: rows.map(cases.publicCase),
+      data,
+      items: data,
     });
   })
 );

@@ -77,6 +77,7 @@ async function ensureIndexes() {
     await db.collection('plans').createIndex({ id: 1 }, { unique: true });
     await db.collection('events').createIndex({ id: 1 }, { unique: true });
     await db.collection('event_registrations').createIndex({ eventId: 1, email: 1 }, { unique: true });
+    await db.collection('event_communications').createIndex({ eventId: 1, createdAt: -1 });
     await db.collection('brochures').createIndex({ id: 1 }, { unique: true });
     await db.collection('payments').createIndex({ id: 1 }, { unique: true });
     await db.collection('payments').createIndex({ razorpayOrderId: 1 }, { unique: true, sparse: true });

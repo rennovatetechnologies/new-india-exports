@@ -7,7 +7,14 @@ function clientIp(req) {
   return req.ip || req.connection?.remoteAddress || 'unknown';
 }
 
-const otpLimiter = rateLimit({
+const noop = (_req, _res, next) => next();
+
+function makeLimiter(options) {
+  if (config.disableRateLimits) return noop;
+  return rateLimit(options);
+}
+
+const otpLimiter = makeLimiter({
   windowMs: 15 * 60 * 1000,
   max: config.otpRateLimit || 5,
   standardHeaders: true,
@@ -16,7 +23,7 @@ const otpLimiter = rateLimit({
   message: { success: false, ok: false, message: 'Too many OTP requests. Try again later.' },
 });
 
-const authVerifyLimiter = rateLimit({
+const authVerifyLimiter = makeLimiter({
   windowMs: 15 * 60 * 1000,
   max: 10,
   standardHeaders: true,
@@ -25,7 +32,7 @@ const authVerifyLimiter = rateLimit({
   message: { success: false, ok: false, message: 'Too many verification attempts.' },
 });
 
-const uploadLimiter = rateLimit({
+const uploadLimiter = makeLimiter({
   windowMs: 60 * 60 * 1000,
   max: 30,
   standardHeaders: true,
@@ -34,7 +41,7 @@ const uploadLimiter = rateLimit({
   message: { success: false, message: 'Upload rate limit exceeded.' },
 });
 
-const createOrderLimiter = rateLimit({
+const createOrderLimiter = makeLimiter({
   windowMs: 60 * 60 * 1000,
   max: 10,
   standardHeaders: true,
@@ -43,7 +50,7 @@ const createOrderLimiter = rateLimit({
   message: { success: false, message: 'Too many payment attempts from this IP.' },
 });
 
-const leadLimiter = rateLimit({
+const leadLimiter = makeLimiter({
   windowMs: 60 * 60 * 1000,
   max: 5,
   standardHeaders: true,

@@ -54,6 +54,7 @@ function emptyCaseDoc(email, userId, caseId) {
       signatoryName: '',
       designation: '',
       panNumber: '',
+      aadhaarNumber: '',
       aadhaarLast4: '',
     },
     kycUploads: {},
@@ -64,6 +65,8 @@ function emptyCaseDoc(email, userId, caseId) {
     kycMissingDocIds: [],
     stageIndex: 0,
     stageNotes: {},
+    /** Frozen at purchase/upgrade — admin + customer both read this, not live plan catalog. */
+    workflowStages: [],
     documents: [],
     docRequests: [],
     opsEmail: null,
@@ -72,6 +75,78 @@ function emptyCaseDoc(email, userId, caseId) {
     createdAt: now,
     updatedAt: now,
   };
+}
+
+function normalizeStage(s) {
+  if (!s || typeof s !== 'object' || !s.id) return null;
+  return {
+    id: String(s.id),
+    label: String(s.label || s.id).trim() || String(s.id),
+    description: String(s.description || '').trim(),
+  };
+}
+
+function mergeWorkflowStages(a, b) {
+  const seen = new Set();
+  const out = [];
+  for (const raw of [...(a || []), ...(b || [])]) {
+    const s = normalizeStage(raw);
+    if (!s || seen.has(s.id)) continue;
+    seen.add(s.id);
+    out.push(s);
+  }
+  return out;
+}
+
+/** Build the stage list that belongs on a case (previous plans ∪ current). */
+async function buildWorkflowStagesForCase(caseDoc) {
+  const db = requireDb();
+  const prevIds = Array.isArray(caseDoc?.previousPlanIds) ? caseDoc.previousPlanIds : [];
+  const currentId = caseDoc?.paidPlanId || caseDoc?.planId || null;
+  const ids = [...new Set([...prevIds, currentId].filter(Boolean))];
+  if (!ids.length) return [];
+  const plans = await db
+    .collection('plans')
+    .find({ id: { $in: ids } })
+    .toArray();
+  const byId = Object.fromEntries(plans.map((p) => [p.id, p]));
+  let stages = [];
+  for (const id of ids) {
+    stages = mergeWorkflowStages(stages, byId[id]?.workflowStages);
+  }
+  return stages;
+}
+
+/**
+ * Ensure case responses always include workflowStages.
+ * Snapshots missing stages into Mongo so every instance / role sees the same list.
+ */
+async function withWorkflowStages(doc) {
+  if (!doc) return null;
+  const pub = publicCase(doc);
+  if (Array.isArray(pub.workflowStages) && pub.workflowStages.length) {
+    return {
+      ...pub,
+      workflowStages: pub.workflowStages.map(normalizeStage).filter(Boolean),
+    };
+  }
+  if (!pub.paidPlanId && !pub.planId) {
+    return { ...pub, workflowStages: [] };
+  }
+  const stages = await buildWorkflowStagesForCase(doc);
+  if (stages.length && doc.id) {
+    try {
+      await requireDb()
+        .collection('customer_cases')
+        .updateOne(
+          { id: doc.id, $or: [{ workflowStages: { $exists: false } }, { workflowStages: { $size: 0 } }, { workflowStages: null }] },
+          { $set: { workflowStages: stages, updatedAt: utcnow() } }
+        );
+    } catch (_) {
+      /* best-effort snapshot */
+    }
+  }
+  return { ...pub, workflowStages: stages };
 }
 
 function addPlanValidity(fromDate = utcnow()) {
@@ -164,7 +239,7 @@ async function getOrCreateCaseForEmail(email, userId) {
     customerEmail: emailN,
     status: { $ne: CASE_STATUS.CLOSED },
   });
-  if (doc) return publicCase(doc);
+  if (doc) return withWorkflowStages(doc);
   const caseId = await newCaseId(emailN);
   doc = emptyCaseDoc(emailN, userId, caseId);
   try {
@@ -172,21 +247,21 @@ async function getOrCreateCaseForEmail(email, userId) {
   } catch (e) {
     if (e.code === 11000) {
       doc = await db.collection('customer_cases').findOne({ customerEmail: emailN });
-      return publicCase(doc);
+      return withWorkflowStages(doc);
     }
     throw e;
   }
-  return publicCase(doc);
+  return withWorkflowStages(doc);
 }
 
 async function getCaseById(caseId) {
   const db = requireDb();
-  return publicCase(await db.collection('customer_cases').findOne({ id: caseId }));
+  return withWorkflowStages(await db.collection('customer_cases').findOne({ id: caseId }));
 }
 
 async function getCaseByEmail(email) {
   const db = requireDb();
-  return publicCase(
+  return withWorkflowStages(
     await db.collection('customer_cases').findOne({
       customerEmail: normalizeEmail(email),
       status: { $ne: CASE_STATUS.CLOSED },
@@ -290,6 +365,13 @@ async function markPlanPaid(caseDoc, { planId, amountPaid, paymentId, purpose },
   const paidAt = utcnow();
   const expiresAt = addPlanValidity(paidAt);
 
+  const workflowStages = await buildWorkflowStagesForCase({
+    ...caseDoc,
+    paidPlanId: plan.id,
+    planId: plan.id,
+    previousPlanIds: prevIds,
+  });
+
   return updateCase(
     caseDoc.id,
     {
@@ -304,6 +386,7 @@ async function markPlanPaid(caseDoc, { planId, amountPaid, paymentId, purpose },
       kycStatus,
       opsEmail,
       opsName,
+      workflowStages,
       status: kycStatus === KYC_STATUS.APPROVED ? CASE_STATUS.ACTIVE : CASE_STATUS.KYC_INCOMPLETE,
     },
     { actor }
@@ -326,6 +409,8 @@ module.exports = {
   PLAN_VALIDITY_YEARS,
   DEFAULT_OPS_ROSTER,
   publicCase,
+  withWorkflowStages,
+  buildWorkflowStagesForCase,
   deriveStatus,
   addPlanValidity,
   isPlanEntitlementActive,

@@ -79,6 +79,9 @@ const SUBJECTS = {
   'message.ops_to_customer': 'Message from your VIRASTRA desk',
   'event.registered': 'You are registered: {{title}}',
   'event.cancelled': 'Registration cancelled: {{title}}',
+  'event.rescheduled': 'Event update: {{title}} has been rescheduled',
+  'event.followup': 'Follow-up: {{title}}',
+  'event.update': 'Update about {{title}}',
   'booking.received_customer': 'We received your shipment enquiry',
   'booking.received_ops': 'New booking lead from {{customerName}}',
   'support.ticket_created': 'Support ticket {{id}} — we are on it',
@@ -603,6 +606,63 @@ function builtInBodies(template, v) {
         text: `Hi ${hi},\n\nYour registration for ${v.title || 'the event'} has been cancelled.\nContact ${support} for refund questions.`,
       };
 
+    case 'event.rescheduled':
+      return {
+        title: 'Event rescheduled',
+        preheader: `${v.title || 'Your event'} has a new schedule.`,
+        ctaLabel: 'View event details',
+        html: `
+          <p style="margin:0 0 14px">Hi ${hi},</p>
+          <p style="margin:0 0 14px">We are writing because <strong>${escapeHtml(v.title || 'your event')}</strong> has been rescheduled.</p>
+          ${detailRows([
+            { label: 'Event', value: v.title },
+            { label: 'New date', value: v.newDate || v.date },
+            { label: 'Venue', value: v.newCity || v.city || v.venue },
+          ])}
+          ${
+            v.message
+              ? `<div style="margin:16px 0;padding:14px 16px;background:#F5F5F4;border-radius:6px;color:#1C1917;white-space:pre-wrap">${escapeHtml(v.message)}</div>`
+              : ''
+          }
+          <p style="margin:16px 0 0">Your registration remains active. Reply if you can no longer attend.</p>`,
+        text: `Hi ${hi},\n\n${v.title || 'Your event'} has been rescheduled.\nNew date: ${v.newDate || v.date || ''}\nVenue: ${v.newCity || v.city || ''}\n\n${v.message || ''}\n\nYour seat remains reserved.`,
+      };
+
+    case 'event.followup':
+      return {
+        title: 'Event follow-up',
+        preheader: `A note about ${v.title || 'your event'}`,
+        ctaLabel: 'Open dashboard',
+        html: `
+          <p style="margin:0 0 14px">Hi ${hi},</p>
+          <p style="margin:0 0 14px">A quick follow-up regarding <strong>${escapeHtml(v.title || 'your event')}</strong>.</p>
+          ${detailRows([
+            { label: 'Event', value: v.title },
+            { label: 'Date', value: v.date },
+            { label: 'City / venue', value: v.city || v.venue },
+          ])}
+          <div style="margin:16px 0;padding:14px 16px;background:#F5F5F4;border-radius:6px;color:#1C1917;white-space:pre-wrap">${escapeHtml(v.message || '')}</div>
+          <p style="margin:0">Reply to this email if you have questions.</p>`,
+        text: `Hi ${hi},\n\nFollow-up about ${v.title || 'your event'}:\n\n${v.message || ''}\n\nDate: ${v.date || ''}\nCity: ${v.city || ''}`,
+      };
+
+    case 'event.update':
+      return {
+        title: 'Event update',
+        preheader: `Update about ${v.title || 'your event'}`,
+        ctaLabel: 'View event details',
+        html: `
+          <p style="margin:0 0 14px">Hi ${hi},</p>
+          <p style="margin:0 0 14px">We have an update for registrants of <strong>${escapeHtml(v.title || 'the event')}</strong>.</p>
+          ${detailRows([
+            { label: 'Event', value: v.title },
+            { label: 'Date', value: v.date },
+            { label: 'City / venue', value: v.city || v.venue },
+          ])}
+          <div style="margin:16px 0;padding:14px 16px;background:#F5F5F4;border-radius:6px;color:#1C1917;white-space:pre-wrap">${escapeHtml(v.message || '')}</div>`,
+        text: `Hi ${hi},\n\nUpdate about ${v.title || 'the event'}:\n\n${v.message || ''}`,
+      };
+
     case 'booking.received_customer':
       return {
         title: 'We received your enquiry',
@@ -704,6 +764,9 @@ function defaultCta(template, vars) {
     'message.ops_to_customer': `${base}/dashboard/messages`,
     'event.registered': `${base}/events`,
     'event.cancelled': `${base}/events`,
+    'event.rescheduled': `${base}/dashboard/events`,
+    'event.followup': `${base}/dashboard/events`,
+    'event.update': `${base}/dashboard/events`,
     'booking.received_customer': base,
     'booking.received_ops': `${base}/dashboard/events`,
     'support.ticket_created': vars.internal ? `${base}/dashboard/support` : base,

@@ -6,6 +6,8 @@ const {
   phoneSchema,
   gstinSchema,
   panSchema,
+  aadhaarSchema,
+  aadhaarLast4Schema,
   staffRoles,
   userRoles,
   staffRequestStatuses,
@@ -203,12 +205,9 @@ const kycProfileSchema = z.object({
   designation: optionalString(120),
   panNumber: panSchema,
   pan: panSchema,
-  aadhaarLast4: z
-    .string()
-    .trim()
-    .optional()
-    .transform((v) => (v == null || v === '' ? '' : v))
-    .refine((v) => v === '' || /^\d{4}$/.test(v), { message: 'aadhaarLast4 must be 4 digits' }),
+  aadhaarNumber: aadhaarSchema,
+  aadhaar: aadhaarSchema,
+  aadhaarLast4: aadhaarLast4Schema,
 }).passthrough();
 
 const kycNeedsMoreSchema = z.object({
@@ -305,10 +304,51 @@ const auditQuerySchema = z.object({
   action: optionalString(120),
   actor: optionalString(200),
   resourceId: optionalString(120),
+  resourceType: optionalString(80),
+  q: optionalString(200),
+});
+
+const adminPaymentsQuerySchema = z.object({
+  limit: z.coerce.number().int().min(1).max(200).optional().default(100),
+  period: z.enum(['week', 'month', 'all']).optional().default('month'),
+  status: z.enum(['paid', 'created', 'failed', 'refunded', 'all']).optional().default('all'),
+  q: optionalString(200),
 });
 
 const emailOutboxQuerySchema = z.object({
   status: optionalString(40),
+});
+
+const eventNotifySchema = z
+  .object({
+    kind: z.enum(['reschedule', 'followup', 'update']).optional().default('update'),
+    subject: optionalString(200),
+    message: nonEmptyString(3, 5000),
+    newDate: optionalString(80),
+    newCity: optionalString(120),
+    emails: z.array(emailSchema).optional(),
+    /** When true, also email every customer account (not only event registrants). */
+    notifyAllUsers: z.boolean().optional().default(false),
+  })
+  .superRefine((d, ctx) => {
+    if (d.kind === 'reschedule' && !(d.newDate || d.message)) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['newDate'],
+        message: 'Provide a new date or message for reschedule',
+      });
+    }
+  });
+
+const transcriptsQuerySchema = z.object({
+  limit: z.coerce.number().int().min(1).max(200).optional().default(50),
+  scope: z
+    .enum(['all', 'events', 'plans', 'messages', 'audit'])
+    .optional()
+    .default('all'),
+  q: optionalString(200),
+  caseId: optionalString(80),
+  eventId: optionalString(80),
 });
 
 const optionalEmail = z.preprocess(
@@ -408,6 +448,7 @@ module.exports = {
   kycDocReviewSchema,
   eventUpsertSchema,
   eventUpdateSchema,
+  eventNotifySchema,
   brochureUpsertSchema,
   brochureUpdateSchema,
   profileUpdateSchema,
@@ -418,7 +459,9 @@ module.exports = {
   staffRoles,
   emailOutboxRetrySchema,
   auditQuerySchema,
+  adminPaymentsQuerySchema,
   emailOutboxQuerySchema,
+  transcriptsQuerySchema,
   invoiceListQuerySchema,
   vaultRejectSchema,
   vaultCommentSchema,

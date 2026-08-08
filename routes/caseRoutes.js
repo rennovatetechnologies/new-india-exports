@@ -69,7 +69,7 @@ router.get(
     if (req.query.opsEmail) query.opsEmail = req.query.opsEmail;
     const q = String(req.query.q || '').trim().toLowerCase();
     let rows = await db.collection('customer_cases').find(query).sort({ updatedAt: -1 }).toArray();
-    rows = rows.map(cases.publicCase);
+    rows = await Promise.all(rows.map((r) => cases.withWorkflowStages(r)));
     if (q) {
       rows = rows.filter((r) =>
         [r.id, r.customerEmail, r.opsEmail, r.opsName, r.planId, r.kycProfile?.legalName]
@@ -135,16 +135,8 @@ router.post(
       { actor: actorFromReq(req) }
     );
     let stageLabel = `Stage ${nextIndex}`;
-    try {
-      const planId = cur.paidPlanId || cur.planId;
-      if (planId) {
-        const plan = await requireDb()
-          .collection('plans')
-          .findOne({ id: planId });
-        const stages = plan?.workflowStages || [];
-        stageLabel = stages[prevIndex]?.label || stages[nextIndex]?.label || stageLabel;
-      }
-    } catch (_) {}
+    const stages = Array.isArray(doc?.workflowStages) ? doc.workflowStages : [];
+    stageLabel = stages[prevIndex]?.label || stages[nextIndex]?.label || stageLabel;
     try {
       await enqueueEmail({
         to: cur.customerEmail,

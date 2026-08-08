@@ -50,6 +50,8 @@ const config = {
   port: parseInt(process.env.PORT || '5001', 10),
   otpTtlMinutes: parseInt(process.env.OTP_TTL_MINUTES || '10', 10),
   otpRateLimit: parseInt(process.env.OTP_RATE_LIMIT || '5', 10),
+  // Off by default outside production (avoids 429s during local/dev testing).
+  disableRateLimits: envBool('DISABLE_RATE_LIMITS', process.env.APP_ENV !== 'production'),
   maxUploadBytes: parseInt(process.env.MAX_UPLOAD_BYTES || String(5 * 1024 * 1024), 10),
   maxCaseUploadBytes: parseInt(process.env.MAX_CASE_UPLOAD_BYTES || String(15 * 1024 * 1024), 10),
   maxBrochurePdfBytes: parseInt(process.env.MAX_BROCHURE_PDF_BYTES || String(20 * 1024 * 1024), 10),
