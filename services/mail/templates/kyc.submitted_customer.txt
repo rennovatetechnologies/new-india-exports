@@ -1,0 +1,3 @@
+Hi {{greetingName}},
+
+We received your KYC for {{caseId}}. Our desk will review it shortly.

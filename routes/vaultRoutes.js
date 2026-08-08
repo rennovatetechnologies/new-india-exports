@@ -3,12 +3,22 @@ const { ObjectId } = require('mongodb');
 const archiver = require('archiver');
 const { requireDb, getFs } = require('../db');
 const { protect, requireRoles } = require('../middleware/auth');
+const { validateBody, validateParams } = require('../middleware/validate');
 const { writeAudit } = require('../services/audit');
 const { normalizeEmail, utcnow, cleanDoc } = require('../services/helpers');
 const { uploadDoc } = require('../utils/uploads');
 const { asyncHandler } = require('../utils/asyncHandler');
+const {
+  vaultRejectSchema,
+  vaultCommentSchema,
+  vaultChecklistSchema,
+  vaultChecklistBodySchema,
+  idParamSchema,
+  caseDocParamsSchema,
+} = require('../schemas');
 
 const router = express.Router({ mergeParams: true });
+const caseIdParam = idParamSchema('caseId');
 
 function cleanVault(doc) {
   const out = cleanDoc(doc) || {};
@@ -25,6 +35,7 @@ function canAccess(user, caseDoc) {
 router.get(
   '/:caseId/documents',
   protect,
+  validateParams(caseIdParam),
   asyncHandler(async (req, res) => {
     const db = requireDb();
     const caseDoc = await db.collection('cases').findOne({ id: req.params.caseId });
@@ -47,6 +58,7 @@ router.get(
 router.post(
   '/:caseId/documents/:docId/upload',
   protect,
+  validateParams(caseDocParamsSchema),
   uploadDoc.single('file'),
   asyncHandler(async (req, res) => {
     const db = requireDb();
@@ -96,6 +108,7 @@ router.post(
 router.get(
   '/:caseId/documents/:docId/content',
   protect,
+  validateParams(caseDocParamsSchema),
   asyncHandler(async (req, res) => {
     const db = requireDb();
     const { caseId, docId } = req.params;
@@ -116,6 +129,7 @@ router.get(
 router.post(
   '/:caseId/documents/:docId/approve',
   requireRoles('operations', 'admin'),
+  validateParams(caseDocParamsSchema),
   asyncHandler(async (req, res) => {
     const db = requireDb();
     const result = await db.collection('case_documents').updateOne(
@@ -135,9 +149,11 @@ router.post(
 router.post(
   '/:caseId/documents/:docId/reject',
   requireRoles('operations', 'admin'),
+  validateParams(caseDocParamsSchema),
+  validateBody(vaultRejectSchema),
   asyncHandler(async (req, res) => {
     const db = requireDb();
-    const reason = req.body?.reason || '';
+    const reason = req.body.reason || '';
     const result = await db.collection('case_documents').updateOne(
       { caseId: req.params.caseId, docId: req.params.docId },
       {
@@ -156,9 +172,11 @@ router.post(
 router.post(
   '/:caseId/documents/:docId/comment',
   requireRoles('operations', 'admin'),
+  validateParams(caseDocParamsSchema),
+  validateBody(vaultCommentSchema),
   asyncHandler(async (req, res) => {
     const db = requireDb();
-    const text = req.body?.text || '';
+    const text = req.body.text || '';
     const result = await db.collection('case_documents').updateOne(
       { caseId: req.params.caseId, docId: req.params.docId },
       { $set: { opsComment: text } }
@@ -171,6 +189,7 @@ router.post(
 router.get(
   '/:caseId/documents/bundle',
   requireRoles('operations', 'admin'),
+  validateParams(caseIdParam),
   asyncHandler(async (req, res) => {
     const db = requireDb();
     const docs = await db
@@ -201,6 +220,8 @@ router.get(
 router.put(
   '/:caseId/document-checklist',
   requireRoles('admin'),
+  validateParams(caseIdParam),
+  validateBody(vaultChecklistBodySchema),
   asyncHandler(async (req, res) => {
     const db = requireDb();
     const body = Array.isArray(req.body) ? req.body : [];

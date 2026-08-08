@@ -1,0 +1,4 @@
+Hi {{greetingName}},
+
+A new document is ready: {{label}} ({{caseId}}).
+Open your dashboard to download it.

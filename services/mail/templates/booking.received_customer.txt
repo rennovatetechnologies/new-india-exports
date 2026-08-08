@@ -1,0 +1,3 @@
+Hi {{greetingName}},
+
+We received your shipment enquiry. Our team will contact you soon.

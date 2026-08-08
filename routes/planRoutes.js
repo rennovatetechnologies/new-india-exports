@@ -1,60 +1,118 @@
 const express = require('express');
 const { requireDb } = require('../db');
-const { requireAdmin, requireRoles } = require('../middleware/auth');
-const { normalizeEmail, utcnow, cleanDoc } = require('../services/helpers');
-const { razorpayCreateOrder } = require('../services/razorpay');
+const { requireAdmin, optionalAuth } = require('../middleware/auth');
+const { validateBody } = require('../middleware/validate');
 const { asyncHandler } = require('../utils/asyncHandler');
+const { utcnow } = require('../services/helpers');
+const { clampDiscount, effectivePrice } = require('../services/gst');
+const { actorFromReq, writeAudit } = require('../services/audit');
+const { planCreateSchema, planUpdateSchema } = require('../schemas');
 
 const router = express.Router();
 
+function publicPlan(p) {
+  if (!p || p.deletedAt) return null;
+  const discountPercent = clampDiscount(p.discountPercent);
+  return {
+    id: p.id,
+    name: p.name,
+    price: Math.round(Number(p.price) || 0),
+    discountPercent,
+    effectivePrice: effectivePrice(p.price, discountPercent),
+    tagline: p.tagline || '',
+    featured: Boolean(p.featured),
+    features: Array.isArray(p.features) ? p.features : [],
+    kycDocs: Array.isArray(p.kycDocs) ? p.kycDocs : [],
+    workflowStages: Array.isArray(p.workflowStages) ? p.workflowStages : [],
+  };
+}
+
 router.get(
   '/plans',
+  optionalAuth,
   asyncHandler(async (req, res) => {
     const db = requireDb();
-    const rows = await db.collection('plans').find({}).sort({ price: 1 }).toArray();
-    return res.json(rows.map(cleanDoc));
+    const rows = await db
+      .collection('plans')
+      .find({ $or: [{ deletedAt: null }, { deletedAt: { $exists: false } }] })
+      .toArray();
+    const plans = rows.map(publicPlan).filter(Boolean);
+    return res.json(plans);
   })
 );
 
 router.post(
   '/plans',
   requireAdmin,
+  validateBody(planCreateSchema),
   asyncHandler(async (req, res) => {
     const db = requireDb();
-    const planId = String(req.body?.id || String(req.body?.name || '').toLowerCase().replace(/\s+/g, '-')).trim();
-    if (req.body?.featured) await db.collection('plans').updateMany({}, { $set: { featured: false } });
+    const id = String(req.body.id || '').trim();
     const doc = {
-      id: planId,
-      name: req.body?.name,
-      price: Number(req.body?.price),
-      tagline: req.body?.tagline || '',
-      featured: Boolean(req.body?.featured),
-      features: Array.isArray(req.body?.features) ? req.body.features : [],
+      id,
+      name: req.body.name || id,
+      price: Math.round(Number(req.body.price) || 0),
+      discountPercent: clampDiscount(req.body.discountPercent),
+      tagline: req.body.tagline || '',
+      featured: Boolean(req.body.featured),
+      features: req.body.features || [],
+      kycDocs: req.body.kycDocs || [],
+      workflowStages: req.body.workflowStages || [],
+      deletedAt: null,
+      updatedAt: utcnow(),
+      createdAt: utcnow(),
     };
-    await db.collection('plans').updateOne({ id: planId }, { $set: doc }, { upsert: true });
-    return res.json(doc);
+    await db.collection('plans').updateOne({ id }, { $set: doc }, { upsert: true });
+    await writeAudit(actorFromReq(req), 'plan.created', {
+      resource: { type: 'plan', id },
+      tone: 'success',
+    });
+    return res.json(publicPlan(doc));
   })
 );
 
 router.put(
   '/plans/:planId',
   requireAdmin,
+  validateBody(planUpdateSchema),
   asyncHandler(async (req, res) => {
     const db = requireDb();
-    const planId = req.params.planId;
-    if (req.body?.featured) {
-      await db.collection('plans').updateMany({ id: { $ne: planId } }, { $set: { featured: false } });
-    }
+    const id = req.params.planId;
+    const prev = await db.collection('plans').findOne({ id });
+    if (!prev) return res.status(404).json({ success: false, message: 'Not found' });
+    const discountPercent =
+      req.body.discountPercent != null
+        ? clampDiscount(req.body.discountPercent)
+        : clampDiscount(prev.discountPercent);
     const doc = {
-      id: planId,
-      name: req.body?.name,
-      price: Number(req.body?.price),
-      tagline: req.body?.tagline || '',
-      featured: Boolean(req.body?.featured),
-      features: Array.isArray(req.body?.features) ? req.body.features : [],
+      id,
+      name: req.body.name != null ? req.body.name : prev.name,
+      price: req.body.price != null ? Math.round(Number(req.body.price) || 0) : prev.price,
+      discountPercent,
+      tagline: req.body.tagline != null ? req.body.tagline : prev.tagline,
+      featured: req.body.featured != null ? Boolean(req.body.featured) : prev.featured,
+      features: req.body.features != null ? req.body.features : prev.features,
+      kycDocs: req.body.kycDocs != null ? req.body.kycDocs : prev.kycDocs,
+      workflowStages:
+        req.body.workflowStages != null ? req.body.workflowStages : prev.workflowStages,
+      updatedAt: utcnow(),
+      deletedAt: null,
+      createdAt: prev.createdAt || utcnow(),
     };
-    await db.collection('plans').updateOne({ id: planId }, { $set: doc }, { upsert: true });
-    return res.json(doc);
+    await db.collection('plans').updateOne({ id }, { $set: doc });
+    if (
+      req.body.discountPercent != null &&
+      clampDiscount(prev.discountPercent) !== discountPercent
+    ) {
+      await writeAudit(actorFromReq(req), 'plan.discount_updated', {
+        resource: { type: 'plan', id },
+        before: { discountPercent: prev.discountPercent },
+        after: { discountPercent },
+      });
+    } else {
+      await writeAudit(actorFromReq(req), 'plan.updated', { resource: { type: 'plan', id } });
+    }
+    return res.json(publicPlan(doc));
   })
 );
 
@@ -63,107 +121,14 @@ router.delete(
   requireAdmin,
   asyncHandler(async (req, res) => {
     const db = requireDb();
-    await db.collection('plans').deleteOne({ id: req.params.planId });
-    return res.json({ ok: true });
-  })
-);
-
-router.get(
-  '/billing/subscription',
-  requireRoles('customer'),
-  asyncHandler(async (req, res) => {
-    const db = requireDb();
-    const email = normalizeEmail(req.user.email);
-    const sub = await db.collection('subscriptions').findOne({ email });
-    if (!sub) {
-      return res.json({
-        planId: 'standard',
-        planName: 'Standard',
-        paidAt: null,
-        usage: { categoriesUsed: 1, categoriesLimit: 5, activeShipments: 0 },
-      });
-    }
-    return res.json(cleanDoc(sub));
-  })
-);
-
-router.post(
-  '/billing/checkout',
-  requireRoles('customer'),
-  asyncHandler(async (req, res) => {
-    const db = requireDb();
-    const plan = await db.collection('plans').findOne({ id: req.body?.planId });
-    if (!plan) return res.status(404).json({ success: false, message: 'Plan not found' });
-    const amount = Number(plan.price) * 100;
-    let order;
-    try {
-      order = await razorpayCreateOrder(amount, 'INR', `plan_${req.body.planId}_${Date.now()}`);
-    } catch (e) {
-      return res.status(500).json({ success: false, message: e.message });
-    }
-    await db.collection('orders').insertOne({
-      razorpayOrderId: order.id,
-      amount,
-      currency: 'INR',
-      status: 'created',
-      planId: req.body.planId,
-      email: normalizeEmail(req.user.email),
-      paymentMethod: req.body?.paymentMethod || 'upi',
-      createdAt: utcnow(),
+    await db
+      .collection('plans')
+      .updateOne({ id: req.params.planId }, { $set: { deletedAt: utcnow() } });
+    await writeAudit(actorFromReq(req), 'plan.deleted', {
+      resource: { type: 'plan', id: req.params.planId },
     });
-    return res.json({ success: true, order, id: order.id, amount, currency: 'INR' });
+    return res.json({ success: true, ok: true });
   })
 );
-
-router.get(
-  '/billing/invoices',
-  requireRoles('customer'),
-  asyncHandler(async (req, res) => {
-    const db = requireDb();
-    const email = normalizeEmail(req.user.email);
-    let rows = (await db.collection('invoices').find({ email }).sort({ date: -1 }).toArray()).map(cleanDoc);
-    const q = String(req.query.q || '').toLowerCase();
-    if (q) {
-      rows = rows.filter(
-        (r) => (r.id || '').toLowerCase().includes(q) || (r.plan || '').toLowerCase().includes(q)
-      );
-    }
-    return res.json(rows);
-  })
-);
-
-router.get('/billing/invoices/export.csv', requireRoles('customer'), asyncHandler(async (req, res) => {
-  const db = requireDb();
-  const email = normalizeEmail(req.user.email);
-  const rows = await db.collection('invoices').find({ email }).toArray();
-  const lines = ['id,date,plan,amount,status'];
-  for (const r of rows) lines.push(`${r.id},${r.date},${r.plan},${r.amount},${r.status}`);
-  res.type('text/csv').send(lines.join('\n'));
-}));
-
-router.get('/billing/invoices/:invoiceId.pdf', requireRoles('customer'), (req, res) => {
-  const content = `Invoice ${req.params.invoiceId}\nNew India Exports\n`;
-  res.setHeader('Content-Type', 'application/pdf');
-  res.setHeader('Content-Disposition', `attachment; filename="${req.params.invoiceId}.pdf"`);
-  res.send(content);
-});
-
-router.get(
-  '/billing/ledger',
-  requireAdmin,
-  asyncHandler(async (req, res) => {
-    const db = requireDb();
-    const rows = await db.collection('invoices').find({}).sort({ date: -1 }).limit(100).toArray();
-    return res.json(rows.map(cleanDoc));
-  })
-);
-
-router.get('/pricing/templates', requireAdmin, (req, res) => {
-  res.json([
-    { id: 'exporter-starter', name: 'Exporter starter', basePlan: 'basic' },
-    { id: 'growth', name: 'Growth desk', basePlan: 'standard' },
-    { id: 'enterprise', name: 'Enterprise white-glove', basePlan: 'premium' },
-  ]);
-});
 
 module.exports = router;

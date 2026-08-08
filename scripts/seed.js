@@ -15,41 +15,100 @@ const SEED_ADMIN = {
   createdAt: '2025-04-01T08:00:00Z',
 };
 
+/** Active staff profiles to upsert by email (operations + admin). */
+const SEED_STAFF = [
+  {
+    id: 'REQ-RAMA-ADMIN',
+    name: 'Ramakrishna',
+    email: 'ramakrishnamnit@gmail.com',
+    phone: '',
+    role: 'admin',
+    department: 'Platform',
+    employeeId: '',
+    reason: 'Bootstrap platform admin',
+    status: 'Approved',
+    emailVerified: true,
+    createdAt: '2026-03-08T08:00:00Z',
+  },
+];
+
+const BASIC_KYC = [
+  { id: 'pan', label: 'PAN card', required: true },
+  { id: 'aadhaar', label: 'Aadhaar', required: true },
+  { id: 'bankStatement', label: 'Bank statement (3 months)', required: true },
+  { id: 'photo', label: 'Passport-size photo', required: true },
+  { id: 'electricity', label: 'Electricity / address proof', required: true },
+];
+
+const BASIC_STAGES = [
+  { id: 'kyc', label: 'KYC verified', description: 'Identity and business documents approved' },
+  { id: 'entity', label: 'Company / entity setup', description: 'Registrations prepared with government portals' },
+  { id: 'iec', label: 'IEC issued', description: 'Import Export Code from DGFT' },
+  { id: 'adcode', label: 'AD code mapped', description: 'Bank AD code registration' },
+  { id: 'docs_complete', label: 'Documentation complete', description: 'Core formation pack delivered' },
+];
+
 const DEFAULT_PLANS = [
   {
     id: 'basic',
     name: 'Basic',
     price: 33999,
+    discountPercent: 0,
     tagline: 'For first-time exporters',
     featured: false,
-    features: ['IEC + AD code', '1 product category', 'Email support', 'Basic KYC review'],
+    features: ['IEC + AD code', 'Core KYC pack', 'Email support', 'Formation workflow'],
+    kycDocs: BASIC_KYC,
+    workflowStages: BASIC_STAGES,
   },
   {
     id: 'standard',
     name: 'Standard',
     price: 43999,
+    discountPercent: 0,
     tagline: 'Most exporters pick this',
     featured: true,
     features: [
       'Everything in Basic',
       'RCMC + DGFT advisory',
-      '5 product categories',
+      'GST & board resolution in KYC',
       'Priority ops support',
-      'Quarterly compliance review',
+    ],
+    kycDocs: [
+      ...BASIC_KYC,
+      { id: 'gst', label: 'GST certificate', required: true },
+      { id: 'boardResolution', label: 'Board resolution', required: true },
+    ],
+    workflowStages: [
+      ...BASIC_STAGES.slice(0, 4),
+      { id: 'rcmc', label: 'RCMC / APEDA', description: 'Commodity board registration' },
+      BASIC_STAGES[4],
     ],
   },
   {
     id: 'premium',
     name: 'Premium',
     price: 83999,
+    discountPercent: 0,
     tagline: 'Full white-glove desk',
     featured: false,
     features: [
       'Everything in Standard',
-      'Dedicated success manager',
-      'Unlimited categories',
-      'Buyer matchmaking',
-      'Trade finance intro',
+      'Dedicated operations owner',
+      'Priority event seating support',
+      'Extended documentation pack',
+    ],
+    kycDocs: [
+      ...BASIC_KYC,
+      { id: 'gst', label: 'GST certificate', required: true },
+      { id: 'boardResolution', label: 'Board resolution', required: true },
+      { id: 'msme', label: 'MSME / Udyam certificate', required: false },
+      { id: 'cancelledCheque', label: 'Cancelled cheque', required: true },
+    ],
+    workflowStages: [
+      ...BASIC_STAGES.slice(0, 4),
+      { id: 'rcmc', label: 'RCMC / APEDA', description: 'Commodity board registration' },
+      { id: 'dedicated', label: 'Dedicated desk onboarding', description: 'Success manager + ops handoff' },
+      BASIC_STAGES[4],
     ],
   },
 ];
@@ -62,6 +121,8 @@ const DEFAULT_EVENTS = [
     city: 'Mumbai, India',
     img: '/event.png',
     seats: '120 delegates',
+    capacity: 120,
+    priceInr: 4999,
     desc: 'Curated meet between Indian exporters and 40+ international buyers across spices, organic food and fresh produce.',
   },
   {
@@ -71,37 +132,15 @@ const DEFAULT_EVENTS = [
     city: 'Dubai, UAE',
     img: '/event2.webp',
     seats: '200 delegates',
+    capacity: 200,
+    priceInr: 0,
     desc: 'Two-day summit on MENA market access, halal certification and trade finance for Indian exporters.',
   },
 ];
 
-const WORKFLOW_CASES = [
-  { id: 'VST-2041', title: 'Spices · Nagpur → Rotterdam', buyer: 'EuroSpice BV', value: '$48,200', stage: 4, accountName: 'Anil Sharma', accountCompany: 'Sharma Spices Pvt Ltd', accountEmail: 'anil@sharmaspices.example', sla: 'On track', opsOwner: 'Riya M.' },
-  { id: 'VST-2038', title: 'Pulses · Mumbai → Dubai', buyer: 'Al-Madar Trading', value: '$22,900', stage: 6, accountName: 'Meera Kulkarni', accountCompany: 'Konkan Pulse Exports', accountEmail: 'meera@konkan.example', sla: 'On track', opsOwner: 'Neha T.' },
-  { id: 'VST-2034', title: 'Organic · Cochin → Hamburg', buyer: 'BioNord GmbH', value: '$31,400', stage: 2, accountName: 'Thomas George', accountCompany: 'Kerala Organic Coop', accountEmail: 'thomas@keralaorganic.example', sla: 'On track', opsOwner: 'Aman P.' },
-  { id: 'VST-2039', title: 'Coastal Organics · ICEGATE filing', buyer: 'Gulf Retail LLC', value: '$18,200', stage: 3, accountName: 'Priya Nair', accountCompany: 'Coastal Organics', accountEmail: 'priya@coastal.example', sla: 'Due today', opsOwner: 'Karan S.' },
-  { id: 'VST-2036', title: 'Verma Agro · IEC issuance', buyer: 'FreshMart EU', value: '$9,400', stage: 2, accountName: 'Mohit Verma', accountCompany: 'Verma Agro Exports', accountEmail: 'mohit@vermaagro.example', sla: 'Breached', opsOwner: 'Riya M.' },
-  { id: 'VST-2033', title: 'Iyer Foods · RCMC / APEDA', buyer: 'Nordic Foods AB', value: '$12,100', stage: 2, accountName: 'Lakshmi Iyer', accountCompany: 'Iyer Foods', accountEmail: 'lakshmi@iyerfoods.example', sla: 'On track', opsOwner: 'Aman P.' },
-  { id: 'VST-2030', title: 'Saffron Trade · KYC review', buyer: '—', value: '—', stage: 1, accountName: 'Rohan Gupta', accountCompany: 'Saffron Trade Co.', accountEmail: 'rohan@saffron.example', sla: 'On track', opsOwner: 'Karan S.' },
+const DEFAULT_OPS_ROSTER = [
+  { email: 'ramakrishnamnit@gmail.com', name: 'Ramakrishna' },
 ];
-
-const VAULT_DOCS = {
-  'VST-2041': [
-    { docId: '0', name: 'Commercial Invoice VST-2041.pdf', size: '92 KB', updated: '08 Apr', status: 'verified' },
-    { docId: '1', name: 'Packing List VST-2041.pdf', size: '144 KB', updated: '08 Apr', status: 'verified' },
-    { docId: '2', name: 'BL Draft Rotterdam.pdf', size: '267 KB', updated: '07 Apr', status: 'missing' },
-    { docId: '3', name: 'Phytosanitary Cert.jpg', size: '1.2 MB', updated: '06 Apr', status: 'review' },
-    { docId: '4', name: 'Certificate of Origin.pdf', size: '201 KB', updated: '06 Apr', status: 'verified' },
-    { docId: '5', name: 'Letter of Credit.pdf', size: '—', updated: '—', status: 'missing' },
-  ],
-  'VST-2038': [
-    { docId: '0', name: 'Commercial Invoice VST-2038.pdf', size: '88 KB', updated: '02 May', status: 'verified' },
-    { docId: '1', name: 'Packing List VST-2038.pdf', size: '120 KB', updated: '02 May', status: 'verified' },
-    { docId: '2', name: 'Health Certificate (UAE).pdf', size: '—', updated: '—', status: 'missing' },
-    { docId: '3', name: 'Insurance Cover Note.pdf', size: '340 KB', updated: '01 May', status: 'review' },
-    { docId: '4', name: 'Container Load Plan.pdf', size: '56 KB', updated: '30 Apr', status: 'verified' },
-  ],
-};
 
 async function seedIfEmpty() {
   const db = getDb();
@@ -130,44 +169,134 @@ async function seedIfEmpty() {
     console.log('Seeded bootstrap admin user');
   }
 
+  for (const staff of SEED_STAFF) {
+    await db.collection('staff_requests').updateOne(
+      { email: staff.email },
+      { $set: { ...staff } },
+      { upsert: true }
+    );
+    const existingUser = await db.collection('users').findOne({ email: staff.email });
+    // Never clobber an existing customer account into staff — same email can own a case.
+    if (existingUser?.role === 'customer') {
+      console.log(
+        `Skip staff user seed for ${staff.email} — already a customer (staff_requests still upserted)`
+      );
+      continue;
+    }
+    await db.collection('users').updateOne(
+      { email: staff.email },
+      {
+        $set: {
+          email: staff.email,
+          name: staff.name,
+          phone: staff.phone,
+          role: staff.role,
+          status: 'Active',
+          kycComplete: true,
+          company: 'New India Export',
+        },
+        $setOnInsert: { createdAt: utcnow() },
+      },
+      { upsert: true }
+    );
+    console.log(`Seeded staff ${staff.role}: ${staff.email}`);
+  }
+
   if ((await db.collection('plans').countDocuments({})) === 0) {
-    await db.collection('plans').insertMany(DEFAULT_PLANS);
+    await db.collection('plans').insertMany(DEFAULT_PLANS.map((p) => ({ ...p, createdAt: utcnow() })));
     console.log('Seeded plans');
+  } else {
+    // ensure kycDocs/workflowStages exist on older seeds
+    for (const plan of DEFAULT_PLANS) {
+      const existing = await db.collection('plans').findOne({ id: plan.id });
+      if (existing && (!existing.kycDocs || !existing.workflowStages)) {
+        await db.collection('plans').updateOne(
+          { id: plan.id },
+          {
+            $set: {
+              kycDocs: plan.kycDocs,
+              workflowStages: plan.workflowStages,
+              features: plan.features,
+              tagline: plan.tagline,
+              featured: plan.featured,
+              discountPercent: existing.discountPercent ?? 0,
+            },
+          }
+        );
+      }
+    }
   }
 
   if ((await db.collection('events').countDocuments({})) === 0) {
-    await db.collection('events').insertMany(DEFAULT_EVENTS);
+    await db.collection('events').insertMany(DEFAULT_EVENTS.map((e) => ({ ...e, createdAt: utcnow() })));
     console.log('Seeded events');
+  } else {
+    for (const ev of DEFAULT_EVENTS) {
+      await db.collection('events').updateOne(
+        { id: ev.id, priceInr: { $exists: false } },
+        { $set: { priceInr: ev.priceInr } }
+      );
+    }
   }
 
-  if ((await db.collection('cases').countDocuments({})) === 0) {
-    const now = utcnow();
-    await db.collection('cases').insertMany(WORKFLOW_CASES.map((c) => ({ ...c, createdAt: now, updatedAt: now })));
-    console.log('Seeded cases');
+  await db.collection('config').updateOne(
+    { key: 'ops_roster' },
+    { $set: { value: DEFAULT_OPS_ROSTER, updatedAt: utcnow() } },
+    { upsert: true }
+  );
+  console.log(`Seeded ops roster: ${DEFAULT_OPS_ROSTER.map((r) => r.email).join(', ')}`);
+
+  // Brochure metadata (static site paths for gallery photos / bundled PDFs — not Drive uploads).
+  if ((await db.collection('brochures').countDocuments({})) === 0) {
+    const gallery = Array.from({ length: 17 }, (_, i) => ({
+      id: `gallery-b${i + 1}`,
+      title: `Brochure ${i + 1}`,
+      name: `Brochure ${i + 1}`,
+      kind: 'gallery',
+      path: `/brochure/B${i + 1}.jpg`,
+      showInNav: false,
+      sortOrder: 100 + i,
+      createdAt: utcnow(),
+      updatedAt: utcnow(),
+      deletedAt: null,
+    }));
+    const pdfs = [
+      {
+        id: 'pdf-workshop-flyer',
+        title: 'Workshop Flyer',
+        name: 'Workshop Flyer',
+        kind: 'pdf',
+        path: '/new india (4).pdf',
+        showInNav: true,
+        sortOrder: 10,
+      },
+      {
+        id: 'pdf-workshop-brochure',
+        title: 'Workshop Brochure',
+        name: 'Workshop Brochure',
+        kind: 'pdf',
+        path: '/BrochureFinal.pdf',
+        showInNav: true,
+        sortOrder: 20,
+      },
+      {
+        id: 'pdf-nie-virtual',
+        title: 'NIE X Virtual Workshop Brochure',
+        name: 'NIE X Virtual Workshop Brochure',
+        kind: 'pdf',
+        path: '/brochure/NIE X VIRTUAL SHIPMENT WORKSHOP (5 DAYS) BROCHURE.pdf',
+        showInNav: true,
+        sortOrder: 30,
+      },
+    ].map((b) => ({ ...b, createdAt: utcnow(), updatedAt: utcnow(), deletedAt: null }));
+    await db.collection('brochures').insertMany([...pdfs, ...gallery]);
+    console.log('Seeded brochures catalog');
   }
 
-  if ((await db.collection('case_documents').countDocuments({})) === 0) {
-    const docs = [];
-    for (const [caseId, list] of Object.entries(VAULT_DOCS)) {
-      for (const d of list) docs.push({ caseId, ...d });
-    }
-    for (const c of WORKFLOW_CASES) {
-      if (VAULT_DOCS[c.id]) continue;
-      docs.push({
-        caseId: c.id,
-        docId: '0',
-        name: `Kickoff pack ${c.id}.pdf`,
-        size: '—',
-        updated: '—',
-        status: 'missing',
-      });
-    }
-    if (docs.length) await db.collection('case_documents').insertMany(docs);
-    console.log('Seeded vault docs');
-  }
+  // Do NOT seed legacy VST shipment cases for the production product surface.
 }
 
-module.exports = { seedIfEmpty };
+module.exports = { seedIfEmpty, DEFAULT_PLANS, DEFAULT_EVENTS };
 
 if (require.main === module) {
   require('dotenv').config();

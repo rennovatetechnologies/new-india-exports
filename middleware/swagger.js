@@ -1,15 +1,24 @@
+const fs = require('fs');
 const path = require('path');
-const swaggerUi = require('swagger-ui-express');
-const YAML = require('yamljs');
 const config = require('../config');
 
 const specPath = path.join(__dirname, '..', 'docs', 'openapi.yaml');
-const openApiSpec = YAML.load(specPath);
 
 function docsEnabled() {
   if (process.env.ENABLE_DOCS === 'true') return true;
   if (process.env.ENABLE_DOCS === 'false') return false;
-  return !config.isProduction;
+  return Boolean(config.enableDocs);
+}
+
+function loadSpec() {
+  if (!fs.existsSync(specPath)) return null;
+  try {
+    const YAML = require('yamljs');
+    return YAML.load(specPath);
+  } catch (e) {
+    console.warn('OpenAPI load failed:', e.message);
+    return null;
+  }
 }
 
 function mountSwagger(app) {
@@ -17,6 +26,12 @@ function mountSwagger(app) {
     console.log('Swagger docs disabled (set ENABLE_DOCS=true to enable)');
     return;
   }
+  const openApiSpec = loadSpec();
+  if (!openApiSpec) {
+    console.warn('Swagger docs enabled but docs/openapi.yaml missing — skipping');
+    return;
+  }
+  const swaggerUi = require('swagger-ui-express');
 
   app.get('/openapi.yaml', (req, res) => {
     res.type('text/yaml').sendFile(specPath);
@@ -39,8 +54,7 @@ function mountSwagger(app) {
   );
 
   app.get('/api-docs', (req, res) => res.redirect('/docs'));
-
   console.log(`Swagger UI at http://127.0.0.1:${config.port}/docs`);
 }
 
-module.exports = { mountSwagger, docsEnabled, openApiSpec };
+module.exports = { mountSwagger, docsEnabled, loadSpec };

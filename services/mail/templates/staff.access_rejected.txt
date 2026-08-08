@@ -1,0 +1,6 @@
+Hi {{greetingName}},
+
+Your staff access request was not approved.
+Note: {{reason}}
+
+Contact {{supportEmail}} if you need clarity.

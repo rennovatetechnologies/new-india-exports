@@ -1,0 +1,4 @@
+Hi {{greetingName}},
+
+Your payment for {{planName}} was unsuccessful. No amount was captured.
+Retry from your dashboard or contact {{supportEmail}}.

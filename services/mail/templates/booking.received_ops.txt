@@ -1,0 +1,4 @@
+New booking lead
+Name: {{customerName}}
+Email: {{customerEmail}}
+Phone: {{phone}}

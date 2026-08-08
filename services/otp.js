@@ -1,6 +1,7 @@
 const config = require('../config');
 const { requireDb } = require('../db');
 const { normalizeEmail, utcnow } = require('./helpers');
+const { enqueueEmail } = require('./mail');
 
 const VALID_PURPOSES = new Set([
   'customer_login',
@@ -25,6 +26,19 @@ async function createOtp(email, purpose) {
   });
   if (!config.isProduction) {
     console.info(`[DEV OTP] ${emailN} (${purpose}): ${code}`);
+  }
+  try {
+    await enqueueEmail({
+      to: emailN,
+      template: 'auth.otp',
+      vars: {
+        otpCode: code,
+        expiresMinutes: config.otpTtlMinutes,
+        customerEmail: emailN,
+      },
+    });
+  } catch (e) {
+    console.warn('OTP email enqueue failed:', e.message);
   }
   return code;
 }

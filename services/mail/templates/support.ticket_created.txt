@@ -1,0 +1,3 @@
+Hi {{greetingName}},
+
+Support ticket {{id}} created. We will respond soon.

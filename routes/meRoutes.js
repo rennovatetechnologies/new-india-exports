@@ -2,9 +2,17 @@ const express = require('express');
 const { ObjectId } = require('mongodb');
 const { requireDb, getFs } = require('../db');
 const { protect, requireRoles } = require('../middleware/auth');
+const { validateBody, validateParams } = require('../middleware/validate');
 const { normalizeEmail, utcnow } = require('../services/helpers');
 const { uploadAvatar } = require('../utils/uploads');
 const { asyncHandler } = require('../utils/asyncHandler');
+const {
+  profileUpdateSchema,
+  companyUpdateSchema,
+  teamInviteSchema,
+  notificationPrefsSchema,
+  objectIdParamSchema,
+} = require('../schemas');
 
 const router = express.Router();
 
@@ -28,14 +36,15 @@ router.get(
 router.put(
   '/me/profile',
   protect,
+  validateBody(profileUpdateSchema),
   asyncHandler(async (req, res) => {
     const db = requireDb();
     const email = normalizeEmail(req.user.email);
     const updates = {};
-    const name = req.body?.fullName || req.body?.name;
+    const name = req.body.fullName || req.body.name;
     if (name != null) updates.name = name;
-    if (req.body?.designation != null) updates.designation = req.body.designation;
-    if (req.body?.phone != null) updates.phone = req.body.phone;
+    if (req.body.designation != null) updates.designation = req.body.designation;
+    if (req.body.phone != null) updates.phone = req.body.phone;
     if (Object.keys(updates).length) await db.collection('users').updateOne({ email }, { $set: updates });
     const u = (await db.collection('users').findOne({ email })) || {};
     return res.json({
@@ -107,15 +116,16 @@ router.get(
 router.put(
   '/me/company',
   requireRoles('customer'),
+  validateBody(companyUpdateSchema),
   asyncHandler(async (req, res) => {
     const db = requireDb();
     const email = normalizeEmail(req.user.email);
     const companyProfile = {
-      legalEntity: req.body?.legalEntity || '',
-      gstin: req.body?.gstin || '',
-      iec: req.body?.iec || '',
-      adCode: req.body?.adCode || '',
-      registeredAddress: req.body?.registeredAddress || '',
+      legalEntity: req.body.legalEntity || '',
+      gstin: req.body.gstin || '',
+      iec: req.body.iec || '',
+      adCode: req.body.adCode || '',
+      registeredAddress: req.body.registeredAddress || '',
     };
     await db
       .collection('users')
@@ -140,6 +150,7 @@ router.get(
 router.post(
   '/me/team/invites',
   requireRoles('customer'),
+  validateBody(teamInviteSchema),
   asyncHandler(async (req, res) => {
     const db = requireDb();
     const email = normalizeEmail(req.user.email);
@@ -147,12 +158,21 @@ router.post(
     const team = Array.isArray(u.team)
       ? [...u.team]
       : [{ id: 'self', name: u.name, email, role: 'Owner' }];
+    const inviteEmail = req.body.email;
+    if (team.some((m) => normalizeEmail(m.email) === inviteEmail)) {
+      return res.status(409).json({
+        success: false,
+        code: 'already_invited',
+        message: 'This email is already on the team',
+      });
+    }
     const invite = {
       id: String(Math.random()).slice(2, 10),
-      name: String(req.body?.email || '').split('@')[0],
-      email: normalizeEmail(req.body?.email),
-      role: req.body?.role || 'Viewer',
+      name: inviteEmail.split('@')[0],
+      email: inviteEmail,
+      role: req.body.role || 'Viewer',
       status: 'invited',
+      invitedAt: utcnow(),
     };
     team.push(invite);
     await db.collection('users').updateOne({ email }, { $set: { team } });
@@ -192,14 +212,15 @@ router.get(
 router.put(
   '/me/notifications',
   protect,
+  validateBody(notificationPrefsSchema),
   asyncHandler(async (req, res) => {
     const db = requireDb();
     const email = normalizeEmail(req.user.email);
     const prefs = {
-      workflow: Boolean(req.body?.workflow),
-      billing: Boolean(req.body?.billing),
-      weekly: Boolean(req.body?.weekly),
-      marketing: Boolean(req.body?.marketing),
+      workflow: Boolean(req.body.workflow),
+      billing: Boolean(req.body.billing),
+      weekly: Boolean(req.body.weekly),
+      marketing: Boolean(req.body.marketing),
     };
     await db.collection('users').updateOne({ email }, { $set: { notificationPrefs: prefs } });
     return res.json(prefs);
@@ -232,15 +253,12 @@ router.get(
 router.post(
   '/notifications/:notifId/read',
   protect,
+  validateParams(objectIdParamSchema('notifId')),
   asyncHandler(async (req, res) => {
     const db = requireDb();
-    try {
-      await db
-        .collection('notifications')
-        .updateOne({ _id: new ObjectId(req.params.notifId) }, { $set: { read: true } });
-    } catch (_) {
-      return res.status(400).json({ success: false, message: 'Invalid id' });
-    }
+    await db
+      .collection('notifications')
+      .updateOne({ _id: new ObjectId(req.params.notifId) }, { $set: { read: true } });
     return res.json({ ok: true });
   })
 );

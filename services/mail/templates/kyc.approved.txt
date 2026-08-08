@@ -1,0 +1,3 @@
+Hi {{greetingName}},
+
+Your KYC is approved ({{caseId}}). Continue onboarding from your dashboard.

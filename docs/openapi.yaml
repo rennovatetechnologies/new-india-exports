@@ -1,46 +1,75 @@
 openapi: 3.0.3
 info:
-  title: New India Exports API
-  description: |
-    Express backend for VISTARA / New India Exports.
-
-    **Auth:** Most protected routes expect `Authorization: Bearer <JWT>`.
-    Customer JWTs come from OTP verify / customer login; staff JWTs from staff login.
-  version: 1.0.0
+  title: 'New India Export / VIRASTRA API'
+  version: 2.3.0
+  description: "Production Express API for customer onboarding, OTP auth, KYC, cases, Razorpay payments, GST invoices, events, and admin ops.\n\n**Auth:** Email OTP only. Send `Authorization: Bearer <JWT>` for protected routes.\n\n**Money:** Amounts in INR rupees in API/DB; converted to paise only for Razorpay.\n\n**Envelope:** `{ success, data?, message? }` on success; `{ success: false, message, code?, details? }` on errors.\n\nLegacy vault/shipment routes under `/api/cases/...` exist only when `ENABLE_LEGACY_SHIPMENT=true`."
+  contact:
+    name: 'New India Export'
+    email: support@newindiaexport.com
 servers:
-  - url: http://127.0.0.1:5001
+  -
+    url: 'http://127.0.0.1:5001'
     description: Local
-  - url: /
-    description: Relative (same host)
+  -
+    url: /
+    description: 'Current host'
 tags:
-  - name: Health
-  - name: Auth
-  - name: Staff
-  - name: RBAC
-  - name: KYC
-  - name: Cases
-  - name: Vault
-  - name: Payments
-  - name: Plans
-  - name: Billing
-  - name: Events
-  - name: Me
-  - name: Notifications
-  - name: Admin
-  - name: Support
-
+  -
+    name: System
+  -
+    name: Auth
+  -
+    name: Staff
+  -
+    name: RBAC
+  -
+    name: KYC
+  -
+    name: Cases
+  -
+    name: Payments
+  -
+    name: Invoices
+  -
+    name: Plans
+  -
+    name: Events
+  -
+    name: Brochures
+  -
+    name: Me
+  -
+    name: Admin
+  -
+    name: Support
+  -
+    name: Files
+  -
+    name: 'Vault (legacy)'
 components:
   securitySchemes:
     bearerAuth:
       type: http
       scheme: bearer
       bearerFormat: JWT
+      description: 'JWT from OTP verify / login. Claims: sub, email, role, status.'
+  parameters:
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: false
+      schema:
+        type: string
+        format: uuid
+      description: 'Recommended for money / submit endpoints'
   schemas:
-    SuccessMessage:
+    Success:
       type: object
       properties:
         success:
           type: boolean
+          example: true
+        data: {}
         message:
           type: string
     Error:
@@ -51,61 +80,266 @@ components:
           example: false
         message:
           type: string
-    TokenResponse:
-      type: object
-      properties:
-        success:
-          type: boolean
-        token:
+        code:
           type: string
-        user:
-          type: object
-    OtpSendRequest:
+        details:
+          type: array
+          items: {}
+    OtpPurpose:
+      type: string
+      enum:
+        - customer_login
+        - customer_signup
+        - staff_login
+        - staff_register
+    OtpSend:
       type: object
-      required: [email]
+      required:
+        - email
+        - purpose
       properties:
         email:
           type: string
           format: email
         purpose:
+          $ref: '#/components/schemas/OtpPurpose'
+        name:
           type: string
-          description: Optional purpose tag (signup, login, etc.)
-    OtpVerifyRequest:
+          maxLength: 120
+        company:
+          type: string
+          maxLength: 200
+        phone:
+          type: string
+    OtpVerify:
       type: object
-      required: [email, otp]
+      required:
+        - email
+        - purpose
       properties:
         email:
           type: string
           format: email
+        purpose:
+          $ref: '#/components/schemas/OtpPurpose'
+        code:
+          type: string
+          description: '6-digit OTP'
         otp:
           type: string
-    StaffLoginRequest:
+          description: 'Alias for code'
+    CustomerSignup:
       type: object
-      required: [email, password]
+      required:
+        - email
       properties:
         email:
           type: string
           format: email
-        password:
+        name:
           type: string
-          format: password
-    CreateOrderRequest:
+        company:
+          type: string
+        phone:
+          type: string
+    LoginWithCode:
+      type: object
+      required:
+        - email
+        - code
+      properties:
+        email:
+          type: string
+          format: email
+        code:
+          type: string
+    StaffRegister:
+      type: object
+      required:
+        - email
+        - name
+        - phone
+        - reason
+      properties:
+        email:
+          type: string
+          format: email
+        name:
+          type: string
+        phone:
+          type: string
+        role:
+          type: string
+          enum:
+            - operations
+            - admin
+          default: operations
+        department:
+          type: string
+        employeeId:
+          type: string
+        reason:
+          type: string
+    StaffAccessPatch:
+      type: object
+      required:
+        - status
+      properties:
+        status:
+          type: string
+          enum:
+            - Pending
+            - Approved
+            - Rejected
+            - Suspended
+        permissions:
+          type: array
+          items:
+            type: string
+        reason:
+          type: string
+    StaffUserPatch:
       type: object
       properties:
+        role:
+          type: string
+          enum:
+            - customer
+            - operations
+            - admin
+        status:
+          type: string
+        name:
+          type: string
+        permissions:
+          type: array
+          items:
+            type: string
+    StaffPermissions:
+      type: object
+      required:
+        - permissions
+      properties:
+        permissions:
+          type: array
+          items:
+            type: string
+    KycProfile:
+      type: object
+      properties:
+        legalName:
+          type: string
+        legalEntityName:
+          type: string
+        entityType:
+          type: string
+        incorporationDate:
+          type: string
+        turnover:
+          type: string
+        registeredAddress:
+          type: string
+        operatingCity:
+          type: string
+        signatoryName:
+          type: string
+        fullName:
+          type: string
+        designation:
+          type: string
+        panNumber:
+          type: string
+        pan:
+          type: string
+        aadhaarLast4:
+          type: string
+          pattern: '^\d{4}$'
+      additionalProperties: true
+    SelectPlan:
+      type: object
+      required:
+        - planId
+      properties:
+        planId:
+          type: string
+    AssignCase:
+      type: object
+      required:
+        - opsEmail
+      properties:
+        opsEmail:
+          type: string
+          format: email
+        opsName:
+          type: string
+    StageNote:
+      type: object
+      properties:
+        note:
+          type: string
+    StageReject:
+      type: object
+      properties:
+        reason:
+          type: string
+    CaseNote:
+      type: object
+      properties:
+        body:
+          type: string
+        note:
+          type: string
+    CaseMessage:
+      type: object
+      required:
+        - body
+      properties:
+        body:
+          type: string
+        message:
+          type: string
+    DocRequest:
+      type: object
+      properties:
+        label:
+          type: string
+        reason:
+          type: string
+    CreateOrder:
+      type: object
+      properties:
+        purpose:
+          type: string
+          enum:
+            - plan
+            - event
+            - workshop
+            - custom
+        planId:
+          type: string
+        eventId:
+          type: string
+        email:
+          type: string
+          format: email
         amount:
           type: number
-          description: Amount in paise (optional; server may use defaults)
+          description: 'INR rupees'
         currency:
           type: string
           default: INR
-        receipt:
+        description:
           type: string
         notes:
           type: object
           additionalProperties: true
-    VerifyPaymentRequest:
+      additionalProperties: true
+    VerifyPayment:
       type: object
-      required: [razorpay_order_id, razorpay_payment_id, razorpay_signature]
+      required:
+        - razorpay_order_id
+        - razorpay_payment_id
+        - razorpay_signature
       properties:
         razorpay_order_id:
           type: string
@@ -113,12 +347,338 @@ components:
           type: string
         razorpay_signature:
           type: string
-
+    Booking:
+      type: object
+      required:
+        - email
+      properties:
+        email:
+          type: string
+          format: email
+        name:
+          type: string
+        phone:
+          type: string
+        company:
+          type: string
+        planId:
+          type: string
+        eventId:
+          type: string
+        notes:
+          type: string
+        paymentId:
+          type: string
+      additionalProperties: true
+    WorkshopRegister:
+      type: object
+      required:
+        - email
+      properties:
+        email:
+          type: string
+          format: email
+        name:
+          type: string
+        company:
+          type: string
+        phone:
+          type: string
+        razorpay_payment_id:
+          type: string
+        paymentId:
+          type: string
+      additionalProperties: true
+    PlanCreate:
+      type: object
+      required:
+        - id
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        price:
+          type: number
+        discountPercent:
+          type: number
+          minimum: 0
+          maximum: 100
+        tagline:
+          type: string
+        featured:
+          type: boolean
+        features:
+          type: array
+          items:
+            type: string
+        kycDocs:
+          type: array
+          items:
+            type: object
+        workflowStages:
+          type: array
+          items: {}
+    PlanUpdate:
+      type: object
+      properties:
+        name:
+          type: string
+        price:
+          type: number
+        discountPercent:
+          type: number
+        tagline:
+          type: string
+        featured:
+          type: boolean
+        features:
+          type: array
+          items:
+            type: string
+        kycDocs:
+          type: array
+          items:
+            type: object
+        workflowStages:
+          type: array
+          items: {}
+    EventUpsert:
+      type: object
+      required:
+        - title
+      properties:
+        id:
+          type: string
+        title:
+          type: string
+        date:
+          type: string
+        city:
+          type: string
+        img:
+          type: string
+        seats:
+          type: string
+        capacity:
+          type: string
+        desc:
+          type: string
+        priceInr:
+          type: number
+        price:
+          type: number
+    EventUpdate:
+      type: object
+      properties:
+        title:
+          type: string
+        date:
+          type: string
+        city:
+          type: string
+        img:
+          type: string
+        seats:
+          type: string
+        capacity:
+          type: string
+        desc:
+          type: string
+        priceInr:
+          type: number
+        price:
+          type: number
+    BrochureUpsert:
+      type: object
+      properties:
+        id:
+          type: string
+        title:
+          type: string
+        description:
+          type: string
+        category:
+          type: string
+        fileUrl:
+          type: string
+        file:
+          type: string
+          format: binary
+    ProfileUpdate:
+      type: object
+      properties:
+        fullName:
+          type: string
+        name:
+          type: string
+        designation:
+          type: string
+        phone:
+          type: string
+    CompanyUpdate:
+      type: object
+      properties:
+        legalEntity:
+          type: string
+        gstin:
+          type: string
+        iec:
+          type: string
+        adCode:
+          type: string
+        registeredAddress:
+          type: string
+    TeamInvite:
+      type: object
+      required:
+        - email
+      properties:
+        email:
+          type: string
+          format: email
+        role:
+          type: string
+          enum:
+            - Viewer
+            - Editor
+            - Admin
+            - Owner
+          default: Viewer
+    NotificationPrefs:
+      type: object
+      properties:
+        workflow:
+          type: boolean
+        billing:
+          type: boolean
+        weekly:
+          type: boolean
+        marketing:
+          type: boolean
+    SupportTicket:
+      type: object
+      properties:
+        email:
+          type: string
+          format: email
+        name:
+          type: string
+        subject:
+          type: string
+        body:
+          type: string
+        message:
+          type: string
+    LeadContact:
+      type: object
+      required:
+        - email
+        - name
+        - message
+      properties:
+        email:
+          type: string
+          format: email
+        name:
+          type: string
+        phone:
+          type: string
+        company:
+          type: string
+        message:
+          type: string
+        source:
+          type: string
+    ConciergeBook:
+      type: object
+      required:
+        - email
+        - name
+      properties:
+        email:
+          type: string
+          format: email
+        name:
+          type: string
+        phone:
+          type: string
+        company:
+          type: string
+        preferredSlot:
+          type: string
+        message:
+          type: string
+    OpsRoster:
+      type: object
+      properties:
+        roster:
+          type: array
+          items:
+            type: object
+            required:
+              - email
+            properties:
+              email:
+                type: string
+                format: email
+              name:
+                type: string
+              active:
+                type: boolean
+    KycNeedsMore:
+      type: object
+      properties:
+        reason:
+          type: string
+  responses:
+    BadRequest:
+      description: 'Validation / bad request'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    Unauthorized:
+      description: 'Missing or invalid JWT'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    Forbidden:
+      description: 'Insufficient role / ACL'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    NotFound:
+      description: 'Resource not found'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
 paths:
   /:
     get:
-      tags: [Health]
-      summary: Health check
+      summary: 'Backend status'
+      tags:
+        - System
+      responses:
+        '200':
+          description: Running
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status: {type: string}
+                  version: {type: string}
+                  env: {type: string}
+      security: []
+  /health:
+    get:
+      summary: 'Health check'
+      tags:
+        - System
       responses:
         '200':
           description: OK
@@ -127,1404 +687,3388 @@ paths:
               schema:
                 type: object
                 properties:
-                  status:
-                    type: string
-
-  /api/auth/otp/send:
-    post:
-      tags: [Auth]
-      summary: Send OTP to email
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/OtpSendRequest'
-      responses:
-        '200':
-          description: OTP sent (dev may echo OTP)
-        '429':
-          description: Rate limited
-
-  /api/auth/otp/resend:
-    post:
-      tags: [Auth]
-      summary: Resend OTP
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/OtpSendRequest'
-      responses:
-        '200':
-          description: OTP resent
-
-  /api/auth/otp/verify:
-    post:
-      tags: [Auth]
-      summary: Verify OTP and issue JWT
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/OtpVerifyRequest'
-      responses:
-        '200':
-          description: Verified
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/TokenResponse'
-
-  /api/auth/customer/signup:
-    post:
-      tags: [Auth]
-      summary: Customer signup
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              properties:
-                email: { type: string }
-                name: { type: string }
-                phone: { type: string }
-                company: { type: string }
-      responses:
-        '200':
-          description: Signup result
-
-  /api/auth/customer/login:
-    post:
-      tags: [Auth]
-      summary: Customer login (OTP flow companion)
-      requestBody:
-        content:
-          application/json:
-            schema:
-              type: object
-              properties:
-                email: { type: string }
-      responses:
-        '200':
-          description: Login initiated / success
-
-  /api/auth/staff/login:
-    post:
-      tags: [Auth]
-      summary: Staff email/password login
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/StaffLoginRequest'
-      responses:
-        '200':
-          description: Staff JWT
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/TokenResponse'
-
-  /api/auth/staff/register:
-    post:
-      tags: [Auth]
-      summary: Staff registration / access request
-      requestBody:
-        content:
-          application/json:
-            schema:
-              type: object
-              properties:
-                email: { type: string }
-                password: { type: string }
-                name: { type: string }
-                role: { type: string }
-      responses:
-        '200':
-          description: Registered or pending approval
-
-  /api/auth/me:
-    get:
-      tags: [Auth]
-      summary: Current auth user
-      security:
-        - bearerAuth: []
-      responses:
-        '200':
-          description: Current user
-
-  /api/auth/logout:
-    post:
-      tags: [Auth]
-      summary: Logout (client discards token)
-      security:
-        - bearerAuth: []
-      responses:
-        '200':
-          description: Logged out
-
-  /api/staff/access-requests:
-    get:
-      tags: [Staff]
-      summary: List staff access requests
-      security:
-        - bearerAuth: []
-      responses:
-        '200':
-          description: Access requests
-
-  /api/staff/access-requests/{reqId}:
-    get:
-      tags: [Staff]
-      summary: Get access request
-      security:
-        - bearerAuth: []
-      parameters:
-        - name: reqId
-          in: path
-          required: true
-          schema: { type: string }
-      responses:
-        '200':
-          description: Access request
-    patch:
-      tags: [Staff]
-      summary: Approve/reject access request
-      security:
-        - bearerAuth: []
-      parameters:
-        - name: reqId
-          in: path
-          required: true
-          schema: { type: string }
-      requestBody:
-        content:
-          application/json:
-            schema:
-              type: object
-              properties:
-                status: { type: string }
-                role: { type: string }
-      responses:
-        '200':
-          description: Updated
-
-  /api/staff/users:
-    get:
-      tags: [Staff]
-      summary: List staff users
-      security:
-        - bearerAuth: []
-      responses:
-        '200':
-          description: Staff users
-
-  /api/staff/users/{email}/permissions:
-    patch:
-      tags: [Staff]
-      summary: Update staff permissions
-      security:
-        - bearerAuth: []
-      parameters:
-        - name: email
-          in: path
-          required: true
-          schema: { type: string }
-      requestBody:
-        content:
-          application/json:
-            schema:
-              type: object
-              properties:
-                permissions:
-                  type: array
-                  items: { type: string }
-      responses:
-        '200':
-          description: Updated
-
-  /api/rbac/matrix:
-    get:
-      tags: [RBAC]
-      summary: Permission matrix
-      security:
-        - bearerAuth: []
-      responses:
-        '200':
-          description: Role/permission matrix
-
-  /api/kyc/me:
-    get:
-      tags: [KYC]
-      summary: My KYC profile
-      security:
-        - bearerAuth: []
-      responses:
-        '200':
-          description: KYC state
-
-  /api/kyc/me/business:
-    put:
-      tags: [KYC]
-      summary: Update business KYC fields
-      security:
-        - bearerAuth: []
-      requestBody:
-        content:
-          application/json:
-            schema:
-              type: object
-              additionalProperties: true
-      responses:
-        '200':
-          description: Updated
-
-  /api/kyc/me/identity:
-    put:
-      tags: [KYC]
-      summary: Update identity KYC fields
-      security:
-        - bearerAuth: []
-      requestBody:
-        content:
-          application/json:
-            schema:
-              type: object
-              additionalProperties: true
-      responses:
-        '200':
-          description: Updated
-
-  /api/kyc/me/documents/{docKey}:
-    post:
-      tags: [KYC]
-      summary: Upload KYC document
-      security:
-        - bearerAuth: []
-      parameters:
-        - name: docKey
-          in: path
-          required: true
-          schema: { type: string }
-      requestBody:
-        content:
-          multipart/form-data:
-            schema:
-              type: object
-              properties:
-                file:
-                  type: string
-                  format: binary
-      responses:
-        '200':
-          description: Uploaded
-    delete:
-      tags: [KYC]
-      summary: Delete KYC document
-      security:
-        - bearerAuth: []
-      parameters:
-        - name: docKey
-          in: path
-          required: true
-          schema: { type: string }
-      responses:
-        '200':
-          description: Deleted
-
-  /api/kyc/me/submit:
-    post:
-      tags: [KYC]
-      summary: Submit KYC for review
-      security:
-        - bearerAuth: []
-      responses:
-        '200':
-          description: Submitted
-
-  /api/kyc/queue:
-    get:
-      tags: [KYC]
-      summary: KYC review queue (staff)
-      security:
-        - bearerAuth: []
-      responses:
-        '200':
-          description: Queue
-
-  /api/kyc/{customerId}/approve:
-    post:
-      tags: [KYC]
-      summary: Approve customer KYC
-      security:
-        - bearerAuth: []
-      parameters:
-        - name: customerId
-          in: path
-          required: true
-          schema: { type: string }
-      responses:
-        '200':
-          description: Approved
-
-  /api/kyc/{customerId}/reject:
-    post:
-      tags: [KYC]
-      summary: Reject customer KYC
-      security:
-        - bearerAuth: []
-      parameters:
-        - name: customerId
-          in: path
-          required: true
-          schema: { type: string }
-      requestBody:
-        content:
-          application/json:
-            schema:
-              type: object
-              properties:
-                reason: { type: string }
-      responses:
-        '200':
-          description: Rejected
-
-  /api/kyc/{customerId}/documents/{docKey}:
-    get:
-      tags: [KYC]
-      summary: Download customer KYC document (staff)
-      security:
-        - bearerAuth: []
-      parameters:
-        - name: customerId
-          in: path
-          required: true
-          schema: { type: string }
-        - name: docKey
-          in: path
-          required: true
-          schema: { type: string }
-      responses:
-        '200':
-          description: File stream
-
-  /api/cases:
-    get:
-      tags: [Cases]
-      summary: List cases
-      security:
-        - bearerAuth: []
-      responses:
-        '200':
-          description: Cases
-    post:
-      tags: [Cases]
-      summary: Create case
-      security:
-        - bearerAuth: []
-      requestBody:
-        content:
-          application/json:
-            schema:
-              type: object
-              additionalProperties: true
-      responses:
-        '200':
-          description: Created
-
-  /api/cases/{caseId}:
-    get:
-      tags: [Cases]
-      summary: Get case
-      security:
-        - bearerAuth: []
-      parameters:
-        - name: caseId
-          in: path
-          required: true
-          schema: { type: string }
-      responses:
-        '200':
-          description: Case
-    patch:
-      tags: [Cases]
-      summary: Update case
-      security:
-        - bearerAuth: []
-      parameters:
-        - name: caseId
-          in: path
-          required: true
-          schema: { type: string }
-      requestBody:
-        content:
-          application/json:
-            schema:
-              type: object
-              additionalProperties: true
-      responses:
-        '200':
-          description: Updated
-
-  /api/cases/{caseId}/stage/approve:
-    post:
-      tags: [Cases]
-      summary: Approve current stage
-      security:
-        - bearerAuth: []
-      parameters:
-        - name: caseId
-          in: path
-          required: true
-          schema: { type: string }
-      responses:
-        '200':
-          description: Stage approved
-
-  /api/cases/{caseId}/stage/reject:
-    post:
-      tags: [Cases]
-      summary: Reject current stage
-      security:
-        - bearerAuth: []
-      parameters:
-        - name: caseId
-          in: path
-          required: true
-          schema: { type: string }
-      requestBody:
-        content:
-          application/json:
-            schema:
-              type: object
-              properties:
-                reason: { type: string }
-      responses:
-        '200':
-          description: Stage rejected
-
-  /api/cases/{caseId}/activity:
-    get:
-      tags: [Cases]
-      summary: Case activity log
-      security:
-        - bearerAuth: []
-      parameters:
-        - name: caseId
-          in: path
-          required: true
-          schema: { type: string }
-      responses:
-        '200':
-          description: Activity
-    post:
-      tags: [Cases]
-      summary: Add case activity note
-      security:
-        - bearerAuth: []
-      parameters:
-        - name: caseId
-          in: path
-          required: true
-          schema: { type: string }
-      requestBody:
-        content:
-          application/json:
-            schema:
-              type: object
-              properties:
-                message: { type: string }
-      responses:
-        '200':
-          description: Added
-
-  /api/workspace/search:
-    get:
-      tags: [Cases]
-      summary: Workspace search
-      security:
-        - bearerAuth: []
-      parameters:
-        - name: q
-          in: query
-          schema: { type: string }
-      responses:
-        '200':
-          description: Search results
-
-  /api/dashboard/overview:
-    get:
-      tags: [Cases]
-      summary: Dashboard overview
-      security:
-        - bearerAuth: []
-      responses:
-        '200':
-          description: Overview
-
-  /api/ops/stats:
-    get:
-      tags: [Cases]
-      summary: Operations stats
-      security:
-        - bearerAuth: []
-      responses:
-        '200':
-          description: Ops stats
-
-  /api/cases/{caseId}/documents:
-    get:
-      tags: [Vault]
-      summary: List case vault documents
-      security:
-        - bearerAuth: []
-      parameters:
-        - name: caseId
-          in: path
-          required: true
-          schema: { type: string }
-      responses:
-        '200':
-          description: Documents
-
-  /api/cases/{caseId}/documents/{docId}/upload:
-    post:
-      tags: [Vault]
-      summary: Upload vault document
-      security:
-        - bearerAuth: []
-      parameters:
-        - name: caseId
-          in: path
-          required: true
-          schema: { type: string }
-        - name: docId
-          in: path
-          required: true
-          schema: { type: string }
-      requestBody:
-        content:
-          multipart/form-data:
-            schema:
-              type: object
-              properties:
-                file:
-                  type: string
-                  format: binary
-      responses:
-        '200':
-          description: Uploaded
-
-  /api/cases/{caseId}/documents/{docId}/content:
-    get:
-      tags: [Vault]
-      summary: Download vault document content
-      security:
-        - bearerAuth: []
-      parameters:
-        - name: caseId
-          in: path
-          required: true
-          schema: { type: string }
-        - name: docId
-          in: path
-          required: true
-          schema: { type: string }
-      responses:
-        '200':
-          description: File stream
-
-  /api/cases/{caseId}/documents/{docId}/approve:
-    post:
-      tags: [Vault]
-      summary: Approve vault document
-      security:
-        - bearerAuth: []
-      parameters:
-        - name: caseId
-          in: path
-          required: true
-          schema: { type: string }
-        - name: docId
-          in: path
-          required: true
-          schema: { type: string }
-      responses:
-        '200':
-          description: Approved
-
-  /api/cases/{caseId}/documents/{docId}/reject:
-    post:
-      tags: [Vault]
-      summary: Reject vault document
-      security:
-        - bearerAuth: []
-      parameters:
-        - name: caseId
-          in: path
-          required: true
-          schema: { type: string }
-        - name: docId
-          in: path
-          required: true
-          schema: { type: string }
-      requestBody:
-        content:
-          application/json:
-            schema:
-              type: object
-              properties:
-                reason: { type: string }
-      responses:
-        '200':
-          description: Rejected
-
-  /api/cases/{caseId}/documents/{docId}/comment:
-    post:
-      tags: [Vault]
-      summary: Comment on vault document
-      security:
-        - bearerAuth: []
-      parameters:
-        - name: caseId
-          in: path
-          required: true
-          schema: { type: string }
-        - name: docId
-          in: path
-          required: true
-          schema: { type: string }
-      requestBody:
-        content:
-          application/json:
-            schema:
-              type: object
-              properties:
-                comment: { type: string }
-      responses:
-        '200':
-          description: Commented
-
-  /api/cases/{caseId}/documents/bundle:
-    get:
-      tags: [Vault]
-      summary: Download vault ZIP bundle
-      security:
-        - bearerAuth: []
-      parameters:
-        - name: caseId
-          in: path
-          required: true
-          schema: { type: string }
-      responses:
-        '200':
-          description: ZIP stream
-
-  /api/cases/{caseId}/document-checklist:
-    put:
-      tags: [Vault]
-      summary: Update document checklist
-      security:
-        - bearerAuth: []
-      parameters:
-        - name: caseId
-          in: path
-          required: true
-          schema: { type: string }
-      requestBody:
-        content:
-          application/json:
-            schema:
-              type: object
-              additionalProperties: true
-      responses:
-        '200':
-          description: Updated
-
-  /api/create-order:
-    post:
-      tags: [Payments]
-      summary: Create Razorpay order (alias)
-      security:
-        - bearerAuth: []
-      requestBody:
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/CreateOrderRequest'
-      responses:
-        '200':
-          description: Order created
-
-  /api/payment/create-order:
-    post:
-      tags: [Payments]
-      summary: Create Razorpay order
-      security:
-        - bearerAuth: []
-      requestBody:
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/CreateOrderRequest'
-      responses:
-        '200':
-          description: Order created
-
-  /api/verify-payment:
-    post:
-      tags: [Payments]
-      summary: Verify Razorpay payment (alias)
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/VerifyPaymentRequest'
-      responses:
-        '200':
-          description: Verified
-
-  /api/payment/verify:
-    post:
-      tags: [Payments]
-      summary: Verify Razorpay payment
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/VerifyPaymentRequest'
-      responses:
-        '200':
-          description: Verified
-
-  /api/bookings:
-    post:
-      tags: [Payments]
-      summary: Create booking payment
-      security:
-        - bearerAuth: []
-      requestBody:
-        content:
-          application/json:
-            schema:
-              type: object
-              additionalProperties: true
-      responses:
-        '200':
-          description: Booking created
-
-  /api/payments/{paymentId}:
-    get:
-      tags: [Payments]
-      summary: Get payment by id
-      security:
-        - bearerAuth: []
-      parameters:
-        - name: paymentId
-          in: path
-          required: true
-          schema: { type: string }
-      responses:
-        '200':
-          description: Payment
-
-  /api/config/public:
-    get:
-      tags: [Payments]
-      summary: Public config (Razorpay key id, etc.)
-      responses:
-        '200':
-          description: Public config
-
+                  ok: {type: boolean}
+                  env: {type: string}
+      security: []
   /api/webhooks/razorpay:
     post:
-      tags: [Payments]
-      summary: Razorpay webhook (raw body + signature)
+      summary: 'Razorpay webhook'
+      tags:
+        - Payments
+      responses:
+        '200':
+          description: Acknowledged
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok: {type: boolean}
+        '400':
+          $ref: '#/components/responses/BadRequest'
+      description: 'Raw JSON body. Validates `x-razorpay-signature`. Handles payment.captured / order.paid / payment.failed.'
+      security: []
       parameters:
-        - name: X-Razorpay-Signature
+        -
+          name: x-razorpay-signature
           in: header
           required: true
-          schema: { type: string }
+          schema:
+            type: string
       requestBody:
         required: true
         content:
           application/json:
             schema:
               type: object
-              additionalProperties: true
-      responses:
-        '200':
-          description: Accepted
-        '400':
-          description: Invalid signature
-
-  /api/plans:
-    get:
-      tags: [Plans]
-      summary: List plans
-      responses:
-        '200':
-          description: Plans
-    post:
-      tags: [Plans]
-      summary: Create plan (admin)
-      security:
-        - bearerAuth: []
-      requestBody:
-        content:
-          application/json:
-            schema:
-              type: object
-              additionalProperties: true
-      responses:
-        '200':
-          description: Created
-
-  /api/plans/{planId}:
-    put:
-      tags: [Plans]
-      summary: Update plan (admin)
-      security:
-        - bearerAuth: []
-      parameters:
-        - name: planId
-          in: path
-          required: true
-          schema: { type: string }
-      requestBody:
-        content:
-          application/json:
-            schema:
-              type: object
-              additionalProperties: true
-      responses:
-        '200':
-          description: Updated
-    delete:
-      tags: [Plans]
-      summary: Delete plan (admin)
-      security:
-        - bearerAuth: []
-      parameters:
-        - name: planId
-          in: path
-          required: true
-          schema: { type: string }
-      responses:
-        '200':
-          description: Deleted
-
-  /api/billing/subscription:
-    get:
-      tags: [Billing]
-      summary: My subscription
-      security:
-        - bearerAuth: []
-      responses:
-        '200':
-          description: Subscription
-
-  /api/billing/checkout:
-    post:
-      tags: [Billing]
-      summary: Start billing checkout
-      security:
-        - bearerAuth: []
-      requestBody:
-        content:
-          application/json:
-            schema:
-              type: object
               properties:
-                planId: { type: string }
-      responses:
-        '200':
-          description: Checkout session / order
-
-  /api/billing/invoices:
-    get:
-      tags: [Billing]
-      summary: List invoices
-      security:
-        - bearerAuth: []
-      responses:
-        '200':
-          description: Invoices
-
-  /api/billing/invoices/export.csv:
-    get:
-      tags: [Billing]
-      summary: Export invoices CSV
-      security:
-        - bearerAuth: []
-      responses:
-        '200':
-          description: CSV
-
-  /api/billing/invoices/{invoiceId}.pdf:
-    get:
-      tags: [Billing]
-      summary: Download invoice PDF
-      security:
-        - bearerAuth: []
-      parameters:
-        - name: invoiceId
-          in: path
-          required: true
-          schema: { type: string }
-      responses:
-        '200':
-          description: PDF
-
-  /api/billing/ledger:
-    get:
-      tags: [Billing]
-      summary: Billing ledger
-      security:
-        - bearerAuth: []
-      responses:
-        '200':
-          description: Ledger
-
-  /api/pricing/templates:
-    get:
-      tags: [Billing]
-      summary: Pricing templates (admin)
-      security:
-        - bearerAuth: []
-      responses:
-        '200':
-          description: Templates
-
-  /api/events:
-    get:
-      tags: [Events]
-      summary: List events
-      responses:
-        '200':
-          description: Events
+                event:
+                  type: string
+                payload:
+                  type: object
+                  additionalProperties: true
+  /api/auth/otp/send:
     post:
-      tags: [Events]
-      summary: Create event (admin)
-      security:
-        - bearerAuth: []
+      summary: 'Send OTP'
+      tags:
+        - Auth
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Success'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+      security: []
       requestBody:
+        required: true
         content:
           application/json:
             schema:
-              type: object
-              additionalProperties: true
+              $ref: '#/components/schemas/OtpSend'
+  /api/auth/otp/resend:
+    post:
+      summary: 'Resend OTP'
+      tags:
+        - Auth
       responses:
         '200':
-          description: Created
-
-  /api/events/{eventId}:
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Success'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/OtpSend'
+  /api/auth/otp/verify:
+    post:
+      summary: 'Verify OTP (returns session for login purposes)'
+      tags:
+        - Auth
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Success'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/OtpVerify'
+  /api/auth/customer/signup:
+    post:
+      summary: 'Complete customer signup after email verified'
+      tags:
+        - Auth
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Success'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CustomerSignup'
+  /api/auth/customer/login:
+    post:
+      summary: 'Customer OTP login'
+      tags:
+        - Auth
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Success'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginWithCode'
+  /api/auth/staff/login:
+    post:
+      summary: 'Staff OTP login (no passwords)'
+      tags:
+        - Auth
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Success'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginWithCode'
+  /api/auth/staff/register:
+    post:
+      summary: 'Submit staff access request'
+      tags:
+        - Auth
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Success'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/StaffRegister'
+  /api/auth/me:
+    get:
+      summary: 'Current authenticated user'
+      tags:
+        - Auth
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Success'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+      security:
+        -
+          bearerAuth: []
+  /api/auth/logout:
+    post:
+      summary: 'Logout (audit; JWT is client-side)'
+      tags:
+        - Auth
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Success'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+      security:
+        -
+          bearerAuth: []
+  /api/staff/access-requests:
+    get:
+      summary: 'List staff access requests'
+      tags:
+        - Staff
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Success'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+      security:
+        -
+          bearerAuth: []
+      parameters:
+        -
+          name: status
+          in: query
+          required: false
+          schema:
+            type: string
+        -
+          name: q
+          in: query
+          required: false
+          schema:
+            type: string
+  '/api/staff/access-requests/{reqId}':
+    get:
+      summary: 'Get staff access request'
+      tags:
+        - Staff
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Success'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+      security:
+        -
+          bearerAuth: []
+      parameters:
+        -
+          name: reqId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: null
+    patch:
+      summary: 'Approve / reject / suspend request'
+      tags:
+        - Staff
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Success'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+      security:
+        -
+          bearerAuth: []
+      parameters:
+        -
+          name: reqId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: null
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/StaffAccessPatch'
+  /api/staff/users:
+    get:
+      summary: 'List staff users'
+      tags:
+        - Staff
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Success'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+      security:
+        -
+          bearerAuth: []
+  '/api/staff/users/{email}':
+    patch:
+      summary: 'Update staff user'
+      tags:
+        - Staff
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Success'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+      security:
+        -
+          bearerAuth: []
+      parameters:
+        -
+          name: email
+          in: path
+          required: true
+          schema:
+            type: string
+          description: null
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/StaffUserPatch'
+  '/api/staff/users/{email}/permissions':
+    patch:
+      summary: 'Set staff permissions'
+      tags:
+        - Staff
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Success'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+      security:
+        -
+          bearerAuth: []
+      parameters:
+        -
+          name: email
+          in: path
+          required: true
+          schema:
+            type: string
+          description: null
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/StaffPermissions'
+  /api/rbac/matrix:
+    get:
+      summary: 'Roles / permissions matrix'
+      tags:
+        - RBAC
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Success'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+      security:
+        -
+          bearerAuth: []
+  /api/kyc/me:
+    get:
+      summary: 'Own KYC status / profile / uploads'
+      tags:
+        - KYC
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Success'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+      security:
+        -
+          bearerAuth: []
+  /api/kyc/me/profile:
+    post:
+      summary: 'Save KYC profile'
+      tags:
+        - KYC
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Success'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+      security:
+        -
+          bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/KycProfile'
     put:
-      tags: [Events]
-      summary: Update event
+      summary: 'Save KYC profile (PUT)'
+      tags:
+        - KYC
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Success'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
       security:
-        - bearerAuth: []
-      parameters:
-        - name: eventId
-          in: path
-          required: true
-          schema: { type: string }
+        -
+          bearerAuth: []
       requestBody:
+        required: true
         content:
           application/json:
             schema:
-              type: object
-              additionalProperties: true
+              $ref: '#/components/schemas/KycProfile'
+  /api/kyc/me/business:
+    put:
+      summary: 'Save KYC business fields (alias of profile)'
+      tags:
+        - KYC
       responses:
         '200':
-          description: Updated
-    delete:
-      tags: [Events]
-      summary: Delete event
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Success'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
       security:
-        - bearerAuth: []
-      parameters:
-        - name: eventId
-          in: path
-          required: true
-          schema: { type: string }
-      responses:
-        '200':
-          description: Deleted
-
-  /api/events/{eventId}/image:
-    post:
-      tags: [Events]
-      summary: Upload event image
-      security:
-        - bearerAuth: []
-      parameters:
-        - name: eventId
-          in: path
-          required: true
-          schema: { type: string }
+        -
+          bearerAuth: []
       requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/KycProfile'
+  /api/kyc/me/identity:
+    put:
+      summary: 'Save KYC identity fields (alias of profile)'
+      tags:
+        - KYC
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Success'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+      security:
+        -
+          bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/KycProfile'
+  '/api/kyc/me/documents/{docId}':
+    post:
+      summary: 'Upload KYC document'
+      tags:
+        - KYC
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Success'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+      security:
+        -
+          bearerAuth: []
+      parameters:
+        -
+          name: docId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: null
+      requestBody:
+        required: true
         content:
           multipart/form-data:
             schema:
               type: object
+              required:
+                - file
               properties:
                 file:
                   type: string
                   format: binary
+    delete:
+      summary: 'Delete KYC document'
+      tags:
+        - KYC
       responses:
         '200':
-          description: Uploaded
-
-  /api/events/registrations/me:
-    get:
-      tags: [Events]
-      summary: My event registrations
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Success'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
       security:
-        - bearerAuth: []
-      responses:
-        '200':
-          description: Registrations
-
-  /api/events/{eventId}/register:
-    post:
-      tags: [Events]
-      summary: Register for event
-      security:
-        - bearerAuth: []
+        -
+          bearerAuth: []
       parameters:
-        - name: eventId
+        -
+          name: docId
           in: path
           required: true
-          schema: { type: string }
+          schema:
+            type: string
+          description: null
+  /api/kyc/me/submit:
+    post:
+      summary: 'Submit KYC for review'
+      tags:
+        - KYC
       responses:
         '200':
-          description: Registered
-
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Success'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+      security:
+        -
+          bearerAuth: []
+      parameters:
+        -
+          $ref: '#/components/parameters/IdempotencyKey'
+  /api/kyc/queue:
+    get:
+      summary: 'Ops KYC review queue'
+      tags:
+        - KYC
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Success'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+      security:
+        -
+          bearerAuth: []
+  '/api/kyc/{caseId}/approve':
+    post:
+      summary: 'Approve KYC'
+      tags:
+        - KYC
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Success'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+      security:
+        -
+          bearerAuth: []
+      parameters:
+        -
+          name: caseId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: 'Case id or legacy email'
+  '/api/kyc/{caseId}/needs-more':
+    post:
+      summary: 'Request more KYC documents'
+      tags:
+        - KYC
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Success'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+      security:
+        -
+          bearerAuth: []
+      parameters:
+        -
+          name: caseId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: null
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/KycNeedsMore'
+  '/api/kyc/{caseId}/reject':
+    post:
+      summary: 'Reject KYC (alias of needs-more)'
+      tags:
+        - KYC
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Success'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+      security:
+        -
+          bearerAuth: []
+      parameters:
+        -
+          name: caseId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: null
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/KycNeedsMore'
+  /api/me/case:
+    get:
+      summary: 'Get or create own onboarding case'
+      tags:
+        - Cases
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Success'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+      security:
+        -
+          bearerAuth: []
+  /api/me/case/plan:
+    patch:
+      summary: 'Select plan on own case'
+      tags:
+        - Cases
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Success'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+      security:
+        -
+          bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SelectPlan'
+  /api/cases:
+    get:
+      summary: 'List cases (ops/admin)'
+      tags:
+        - Cases
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Success'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+      security:
+        -
+          bearerAuth: []
+      parameters:
+        -
+          name: status
+          in: query
+          required: false
+          schema:
+            type: string
+        -
+          name: kycStatus
+          in: query
+          required: false
+          schema:
+            type: string
+        -
+          name: opsEmail
+          in: query
+          required: false
+          schema:
+            type: string
+        -
+          name: q
+          in: query
+          required: false
+          schema:
+            type: string
+  '/api/cases/{caseId}':
+    get:
+      summary: 'Get case by id'
+      tags:
+        - Cases
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Success'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+      security:
+        -
+          bearerAuth: []
+      parameters:
+        -
+          name: caseId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: null
+  '/api/cases/{caseId}/assign':
+    patch:
+      summary: 'Assign ops owner'
+      tags:
+        - Cases
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Success'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+      security:
+        -
+          bearerAuth: []
+      parameters:
+        -
+          name: caseId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: null
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AssignCase'
+  '/api/cases/{caseId}/stage/approve':
+    post:
+      summary: 'Approve / advance workflow stage'
+      tags:
+        - Cases
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Success'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+      security:
+        -
+          bearerAuth: []
+      parameters:
+        -
+          name: caseId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: null
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/StageNote'
+  '/api/cases/{caseId}/stage/reject':
+    post:
+      summary: 'Reject current stage'
+      tags:
+        - Cases
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Success'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+      security:
+        -
+          bearerAuth: []
+      parameters:
+        -
+          name: caseId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: null
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/StageReject'
+  '/api/cases/{caseId}/notes':
+    post:
+      summary: 'Add internal case note'
+      tags:
+        - Cases
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Success'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+      security:
+        -
+          bearerAuth: []
+      parameters:
+        -
+          name: caseId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: null
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CaseNote'
+  /api/ops/roster:
+    get:
+      summary: 'Ops roster'
+      tags:
+        - Cases
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Success'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+      security:
+        -
+          bearerAuth: []
+    put:
+      summary: 'Replace ops roster (admin)'
+      tags:
+        - Cases
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Success'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+      security:
+        -
+          bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/OpsRoster'
+  '/api/cases/{caseId}/messages':
+    get:
+      summary: 'List case messages'
+      tags:
+        - Cases
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Success'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+      security:
+        -
+          bearerAuth: []
+      parameters:
+        -
+          name: caseId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: null
+    post:
+      summary: 'Send case message'
+      tags:
+        - Cases
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Success'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+      security:
+        -
+          bearerAuth: []
+      parameters:
+        -
+          name: caseId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: null
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CaseMessage'
+  /api/me/messages/unread-count:
+    get:
+      summary: 'Unread message count'
+      tags:
+        - Cases
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Success'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+      security:
+        -
+          bearerAuth: []
+  '/api/cases/{caseId}/documents':
+    get:
+      summary: 'List case documents'
+      tags:
+        - Cases
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Success'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+      security:
+        -
+          bearerAuth: []
+      parameters:
+        -
+          name: caseId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: null
+    post:
+      summary: 'Upload case document'
+      tags:
+        - Cases
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Success'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+      security:
+        -
+          bearerAuth: []
+      parameters:
+        -
+          name: caseId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: null
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required:
+                - file
+              properties:
+                file:
+                  type: string
+                  format: binary
+                stageId:
+                  type: string
+                requestId:
+                  type: string
+  '/api/cases/{caseId}/doc-requests':
+    post:
+      summary: 'Request document from customer'
+      tags:
+        - Cases
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Success'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+      security:
+        -
+          bearerAuth: []
+      parameters:
+        -
+          name: caseId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: null
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DocRequest'
+  '/api/cases/{caseId}/doc-requests/{reqId}/fulfill':
+    post:
+      summary: 'Fulfill document request (customer upload)'
+      tags:
+        - Cases
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Success'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+      security:
+        -
+          bearerAuth: []
+      parameters:
+        -
+          name: caseId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: null
+        -
+          name: reqId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: null
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required:
+                - file
+              properties:
+                file:
+                  type: string
+                  format: binary
+  /api/create-order:
+    post:
+      summary: 'Create Razorpay order'
+      tags:
+        - Payments
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Success'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+      security:
+        -
+          bearerAuth: []
+        - {}
+      parameters:
+        -
+          $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateOrder'
+  /api/payment/create-order:
+    post:
+      summary: 'Create Razorpay order (alias)'
+      tags:
+        - Payments
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Success'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+      security:
+        -
+          bearerAuth: []
+        - {}
+      parameters:
+        -
+          $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateOrder'
+  /api/verify-payment:
+    post:
+      summary: 'Verify Razorpay payment + capture'
+      tags:
+        - Payments
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Success'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+      security:
+        -
+          bearerAuth: []
+        - {}
+      parameters:
+        -
+          $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/VerifyPayment'
+  /api/payment/verify:
+    post:
+      summary: 'Verify payment (alias)'
+      tags:
+        - Payments
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Success'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+      security:
+        -
+          bearerAuth: []
+        - {}
+      parameters:
+        -
+          $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/VerifyPayment'
+  /api/bookings:
+    post:
+      summary: 'Store booking lead'
+      tags:
+        - Payments
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Success'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+      security:
+        -
+          bearerAuth: []
+        - {}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Booking'
   /api/workshops/virtual-shipment/register:
     post:
-      tags: [Events]
-      summary: Register for virtual shipment workshop
+      summary: 'Workshop registration'
+      tags:
+        - Payments
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Success'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
       security:
-        - bearerAuth: []
+        -
+          bearerAuth: []
+        - {}
       requestBody:
+        required: true
         content:
           application/json:
             schema:
-              type: object
-              additionalProperties: true
-      responses:
-        '200':
-          description: Registered
-
-  /api/me/profile:
+              $ref: '#/components/schemas/WorkshopRegister'
+  '/api/payments/{paymentId}':
     get:
-      tags: [Me]
-      summary: Get profile
-      security:
-        - bearerAuth: []
+      summary: 'Payment detail'
+      tags:
+        - Payments
       responses:
         '200':
-          description: Profile
-    put:
-      tags: [Me]
-      summary: Update profile
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Success'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
       security:
-        - bearerAuth: []
+        -
+          bearerAuth: []
+      parameters:
+        -
+          name: paymentId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: 'Internal id or Razorpay payment id'
+  /api/config/public:
+    get:
+      summary: 'Public Razorpay + seller config'
+      tags:
+        - Payments
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Success'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+      security: []
+  /api/invoices:
+    get:
+      summary: 'List invoices'
+      tags:
+        - Invoices
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Success'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+      security:
+        -
+          bearerAuth: []
+      parameters:
+        -
+          name: page
+          in: query
+          required: false
+          schema:
+            type: integer
+            default: 1
+        -
+          name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            default: 20
+        -
+          name: email
+          in: query
+          required: false
+          schema:
+            type: string
+        -
+          name: caseId
+          in: query
+          required: false
+          schema:
+            type: string
+        -
+          name: paymentId
+          in: query
+          required: false
+          schema:
+            type: string
+  '/api/invoices/{invoiceId}':
+    get:
+      summary: 'Invoice detail'
+      tags:
+        - Invoices
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Success'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+      security:
+        -
+          bearerAuth: []
+      parameters:
+        -
+          name: invoiceId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: null
+  '/api/invoices/{invoiceId}/pdf':
+    get:
+      summary: 'Download invoice PDF'
+      tags:
+        - Invoices
+      responses:
+        '200':
+          description: 'PDF stream'
+          content:
+            application/pdf:
+              schema:
+                type: string
+                format: binary
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+      security:
+        -
+          bearerAuth: []
+      parameters:
+        -
+          name: invoiceId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: null
+  '/api/invoices/{invoiceId}/email':
+    post:
+      summary: 'Resend invoice email'
+      tags:
+        - Invoices
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Success'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+      security:
+        -
+          bearerAuth: []
+      parameters:
+        -
+          name: invoiceId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: null
+        -
+          $ref: '#/components/parameters/IdempotencyKey'
+  /api/plans:
+    get:
+      summary: 'List active plans'
+      tags:
+        - Plans
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Success'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+      security:
+        -
+          bearerAuth: []
+        - {}
+    post:
+      summary: 'Create / upsert plan (admin)'
+      tags:
+        - Plans
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Success'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+      security:
+        -
+          bearerAuth: []
       requestBody:
+        required: true
         content:
           application/json:
             schema:
-              type: object
-              additionalProperties: true
+              $ref: '#/components/schemas/PlanCreate'
+  '/api/plans/{planId}':
+    put:
+      summary: 'Update plan (admin)'
+      tags:
+        - Plans
       responses:
         '200':
-          description: Updated
-
-  /api/me/avatar:
-    post:
-      tags: [Me]
-      summary: Upload avatar
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Success'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
       security:
-        - bearerAuth: []
+        -
+          bearerAuth: []
+      parameters:
+        -
+          name: planId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: null
       requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PlanUpdate'
+    delete:
+      summary: 'Soft-delete plan (admin)'
+      tags:
+        - Plans
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Success'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+      security:
+        -
+          bearerAuth: []
+      parameters:
+        -
+          name: planId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: null
+  /api/events:
+    get:
+      summary: 'List events'
+      tags:
+        - Events
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Success'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+      security: []
+    post:
+      summary: 'Create / upsert event (admin)'
+      tags:
+        - Events
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Success'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+      security:
+        -
+          bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EventUpsert'
+  '/api/events/{eventId}':
+    put:
+      summary: 'Update event (admin)'
+      tags:
+        - Events
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Success'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+      security:
+        -
+          bearerAuth: []
+      parameters:
+        -
+          name: eventId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: null
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EventUpdate'
+    delete:
+      summary: 'Soft-delete event (admin)'
+      tags:
+        - Events
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Success'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+      security:
+        -
+          bearerAuth: []
+      parameters:
+        -
+          name: eventId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: null
+  '/api/events/{eventId}/image':
+    post:
+      summary: 'Upload event image (admin)'
+      tags:
+        - Events
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Success'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+      security:
+        -
+          bearerAuth: []
+      parameters:
+        -
+          name: eventId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: null
+      requestBody:
+        required: true
         content:
           multipart/form-data:
             schema:
               type: object
+              required:
+                - file
               properties:
                 file:
                   type: string
                   format: binary
+  '/api/events/{id}/register':
+    post:
+      summary: 'Register for free event (402 if paid)'
+      tags:
+        - Events
       responses:
         '200':
-          description: Uploaded
-
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Success'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+      security:
+        -
+          bearerAuth: []
+      parameters:
+        -
+          name: id
+          in: path
+          required: true
+          schema:
+            type: string
+          description: null
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+    delete:
+      summary: 'Cancel event registration'
+      tags:
+        - Events
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Success'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+      security:
+        -
+          bearerAuth: []
+      parameters:
+        -
+          name: id
+          in: path
+          required: true
+          schema:
+            type: string
+          description: null
+  /api/me/event-registrations:
+    get:
+      summary: 'My event registrations'
+      tags:
+        - Events
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Success'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+      security:
+        -
+          bearerAuth: []
+  /api/events/registrations/me:
+    get:
+      summary: 'My event registrations (alias)'
+      tags:
+        - Events
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Success'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+      security:
+        -
+          bearerAuth: []
+  /api/brochures:
+    get:
+      summary: 'List brochures'
+      tags:
+        - Brochures
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Success'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+      security: []
+    post:
+      summary: 'Create brochure (admin/ops)'
+      tags:
+        - Brochures
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Success'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+      security:
+        -
+          bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/BrochureUpsert'
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BrochureUpsert'
+  '/api/brochures/{id}':
+    put:
+      summary: 'Update brochure metadata'
+      tags:
+        - Brochures
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Success'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+      security:
+        -
+          bearerAuth: []
+      parameters:
+        -
+          name: id
+          in: path
+          required: true
+          schema:
+            type: string
+          description: null
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BrochureUpsert'
+    delete:
+      summary: 'Soft-delete brochure'
+      tags:
+        - Brochures
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Success'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+      security:
+        -
+          bearerAuth: []
+      parameters:
+        -
+          name: id
+          in: path
+          required: true
+          schema:
+            type: string
+          description: null
+  '/api/brochures/{id}/file':
+    get:
+      summary: 'Stream brochure file'
+      tags:
+        - Brochures
+      responses:
+        '200':
+          description: 'File stream'
+          content:
+            application/octet-stream:
+              schema:
+                type: string
+                format: binary
+        '404':
+          $ref: '#/components/responses/NotFound'
+      security:
+        -
+          bearerAuth: []
+        - {}
+      parameters:
+        -
+          name: id
+          in: path
+          required: true
+          schema:
+            type: string
+          description: null
+  /api/me/profile:
+    get:
+      summary: 'User profile'
+      tags:
+        - Me
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Success'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+      security:
+        -
+          bearerAuth: []
+    put:
+      summary: 'Update profile'
+      tags:
+        - Me
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Success'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+      security:
+        -
+          bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ProfileUpdate'
+  /api/me/avatar:
+    post:
+      summary: 'Upload avatar'
+      tags:
+        - Me
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Success'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+      security:
+        -
+          bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required:
+                - file
+              properties:
+                file:
+                  type: string
+                  format: binary
   /api/me/avatar-file:
     get:
-      tags: [Me]
-      summary: Download avatar file
-      security:
-        - bearerAuth: []
+      summary: 'Stream own avatar'
+      tags:
+        - Me
       responses:
         '200':
           description: Image
-
+          content:
+            'image/*':
+              schema:
+                type: string
+                format: binary
+      security:
+        -
+          bearerAuth: []
   /api/me/company:
     get:
-      tags: [Me]
-      summary: Get company
-      security:
-        - bearerAuth: []
+      summary: 'Company profile (customer)'
+      tags:
+        - Me
       responses:
         '200':
-          description: Company
-    put:
-      tags: [Me]
-      summary: Update company
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Success'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
       security:
-        - bearerAuth: []
+        -
+          bearerAuth: []
+    put:
+      summary: 'Update company profile'
+      tags:
+        - Me
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Success'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+      security:
+        -
+          bearerAuth: []
       requestBody:
+        required: true
         content:
           application/json:
             schema:
-              type: object
-              additionalProperties: true
-      responses:
-        '200':
-          description: Updated
-
+              $ref: '#/components/schemas/CompanyUpdate'
   /api/me/team:
     get:
-      tags: [Me]
-      summary: List team members
-      security:
-        - bearerAuth: []
+      summary: 'Team list'
+      tags:
+        - Me
       responses:
         '200':
-          description: Team
-
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Success'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+      security:
+        -
+          bearerAuth: []
   /api/me/team/invites:
     post:
-      tags: [Me]
-      summary: Invite team member
+      summary: 'Invite teammate'
+      tags:
+        - Me
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Success'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
       security:
-        - bearerAuth: []
+        -
+          bearerAuth: []
       requestBody:
+        required: true
         content:
           application/json:
             schema:
-              type: object
-              properties:
-                email: { type: string }
-                role: { type: string }
+              $ref: '#/components/schemas/TeamInvite'
+  '/api/me/team/{memberId}':
+    delete:
+      summary: 'Remove teammate'
+      tags:
+        - Me
       responses:
         '200':
-          description: Invited
-
-  /api/me/team/{memberId}:
-    delete:
-      tags: [Me]
-      summary: Remove team member
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Success'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
       security:
-        - bearerAuth: []
+        -
+          bearerAuth: []
       parameters:
-        - name: memberId
+        -
+          name: memberId
           in: path
           required: true
-          schema: { type: string }
-      responses:
-        '200':
-          description: Removed
-
+          schema:
+            type: string
+          description: null
   /api/me/notifications:
     get:
-      tags: [Notifications]
-      summary: Notification preferences / list (me)
-      security:
-        - bearerAuth: []
+      summary: 'Notification preferences'
+      tags:
+        - Me
       responses:
         '200':
-          description: Notifications prefs
-    put:
-      tags: [Notifications]
-      summary: Update notification preferences
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Success'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
       security:
-        - bearerAuth: []
+        -
+          bearerAuth: []
+    put:
+      summary: 'Update notification preferences'
+      tags:
+        - Me
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Success'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+      security:
+        -
+          bearerAuth: []
       requestBody:
+        required: true
         content:
           application/json:
             schema:
-              type: object
-              additionalProperties: true
-      responses:
-        '200':
-          description: Updated
-
+              $ref: '#/components/schemas/NotificationPrefs'
   /api/notifications:
     get:
-      tags: [Notifications]
-      summary: List notifications
-      security:
-        - bearerAuth: []
+      summary: 'Notification inbox (last 50)'
+      tags:
+        - Me
       responses:
         '200':
-          description: Notifications
-
-  /api/notifications/{notifId}/read:
-    post:
-      tags: [Notifications]
-      summary: Mark notification read
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Success'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
       security:
-        - bearerAuth: []
+        -
+          bearerAuth: []
+  '/api/notifications/{notifId}/read':
+    post:
+      summary: 'Mark notification read'
+      tags:
+        - Me
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Success'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+      security:
+        -
+          bearerAuth: []
       parameters:
-        - name: notifId
+        -
+          name: notifId
           in: path
           required: true
-          schema: { type: string }
+          schema:
+            type: string
+          description: null
+  /api/admin/analytics/overview:
+    get:
+      summary: 'Analytics overview KPIs'
+      tags:
+        - Admin
       responses:
         '200':
-          description: Marked read
-
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Success'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+      security:
+        -
+          bearerAuth: []
   /api/admin/analytics/summary:
     get:
-      tags: [Admin]
-      summary: Analytics summary
-      security:
-        - bearerAuth: []
+      summary: 'Analytics summary'
+      tags:
+        - Admin
       responses:
         '200':
-          description: Summary
-
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Success'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+      security:
+        -
+          bearerAuth: []
   /api/admin/analytics/detail:
     get:
-      tags: [Admin]
-      summary: Analytics detail
-      security:
-        - bearerAuth: []
+      summary: 'Analytics detail series (placeholder)'
+      tags:
+        - Admin
       responses:
         '200':
-          description: Detail
-
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Success'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+      security:
+        -
+          bearerAuth: []
   /api/admin/audit:
     get:
-      tags: [Admin]
-      summary: Audit log
-      security:
-        - bearerAuth: []
+      summary: 'Audit log'
+      tags:
+        - Admin
       responses:
         '200':
-          description: Audit entries
-
-  /api/admin/workflow-templates:
-    get:
-      tags: [Admin]
-      summary: List workflow templates
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Success'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
       security:
-        - bearerAuth: []
-      responses:
-        '200':
-          description: Templates
-
-  /api/admin/workflow-templates/{templateId}:
-    put:
-      tags: [Admin]
-      summary: Update workflow template
-      security:
-        - bearerAuth: []
+        -
+          bearerAuth: []
       parameters:
-        - name: templateId
-          in: path
-          required: true
-          schema: { type: string }
+        -
+          name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+        -
+          name: action
+          in: query
+          required: false
+          schema:
+            type: string
+        -
+          name: actor
+          in: query
+          required: false
+          schema:
+            type: string
+        -
+          name: resourceId
+          in: query
+          required: false
+          schema:
+            type: string
+  /api/admin/email-outbox:
+    get:
+      summary: 'Email outbox'
+      tags:
+        - Admin
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Success'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+      security:
+        -
+          bearerAuth: []
+      parameters:
+        -
+          name: status
+          in: query
+          required: false
+          schema:
+            type: string
+  /api/admin/email-outbox/retry:
+    post:
+      summary: 'Retry failed emails'
+      tags:
+        - Admin
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Success'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+      security:
+        -
+          bearerAuth: []
       requestBody:
+        required: false
         content:
           application/json:
             schema:
               type: object
-              additionalProperties: true
-      responses:
-        '200':
-          description: Updated
-
+              properties:
+                limit:
+                  type: integer
   /api/admin/pending-counts:
     get:
-      tags: [Admin]
-      summary: Pending action counts
-      security:
-        - bearerAuth: []
+      summary: 'Pending KYC + staff counts'
+      tags:
+        - Admin
       responses:
         '200':
-          description: Counts
-
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Success'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+      security:
+        -
+          bearerAuth: []
   /api/support/faqs:
     get:
-      tags: [Support]
-      summary: List FAQs
+      summary: FAQs
+      tags:
+        - Support
       responses:
         '200':
-          description: FAQs
-
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Success'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+      security: []
   /api/support/articles:
     get:
-      tags: [Support]
-      summary: List support articles
+      summary: 'Help articles'
+      tags:
+        - Support
       responses:
         '200':
-          description: Articles
-
-  /api/support/concierge/book:
-    post:
-      tags: [Support]
-      summary: Book concierge session
-      requestBody:
-        content:
-          application/json:
-            schema:
-              type: object
-              additionalProperties: true
-      responses:
-        '200':
-          description: Booked
-
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Success'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+      security: []
   /api/support/tickets:
     post:
-      tags: [Support]
-      summary: Create support ticket
+      summary: 'Create support ticket'
+      tags:
+        - Support
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Success'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+      security:
+        -
+          bearerAuth: []
+        - {}
       requestBody:
+        required: true
         content:
           application/json:
             schema:
-              type: object
-              properties:
-                subject: { type: string }
-                message: { type: string }
-                email: { type: string }
+              $ref: '#/components/schemas/SupportTicket'
+    get:
+      summary: 'List support tickets (ops/admin)'
+      tags:
+        - Support
       responses:
         '200':
-          description: Created
-
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Success'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+      security:
+        -
+          bearerAuth: []
   /api/leads/contact:
     post:
-      tags: [Support]
-      summary: Contact / lead form
+      summary: 'Contact lead'
+      tags:
+        - Support
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Success'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+      security: []
       requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LeadContact'
+  /api/support/concierge/book:
+    post:
+      summary: 'Book concierge call'
+      tags:
+        - Support
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Success'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ConciergeBook'
+  '/api/files/{fileId}/download':
+    get:
+      summary: 'Download Drive-backed file (authz proxy)'
+      tags:
+        - Files
+      responses:
+        '200':
+          description: 'File stream'
+          content:
+            application/octet-stream:
+              schema:
+                type: string
+                format: binary
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+      security:
+        -
+          bearerAuth: []
+      parameters:
+        -
+          name: fileId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: null
+  '/api/cases/{caseId}/documents/{docId}/upload':
+    post:
+      summary: '[Legacy] Upload/replace vault document'
+      tags:
+        - 'Vault (legacy)'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Success'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+      description: 'Only when ENABLE_LEGACY_SHIPMENT=true'
+      security:
+        -
+          bearerAuth: []
+      parameters:
+        -
+          name: caseId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: null
+        -
+          name: docId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: null
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required:
+                - file
+              properties:
+                file:
+                  type: string
+                  format: binary
+  '/api/cases/{caseId}/documents/{docId}/content':
+    get:
+      summary: '[Legacy] Download vault document'
+      tags:
+        - 'Vault (legacy)'
+      responses:
+        '200':
+          description: File
+          content:
+            application/octet-stream:
+              schema:
+                type: string
+                format: binary
+      description: 'Only when ENABLE_LEGACY_SHIPMENT=true'
+      security:
+        -
+          bearerAuth: []
+      parameters:
+        -
+          name: caseId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: null
+        -
+          name: docId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: null
+  '/api/cases/{caseId}/documents/{docId}/approve':
+    post:
+      summary: '[Legacy] Approve vault document'
+      tags:
+        - 'Vault (legacy)'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Success'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+      security:
+        -
+          bearerAuth: []
+      parameters:
+        -
+          name: caseId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: null
+        -
+          name: docId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: null
+  '/api/cases/{caseId}/documents/{docId}/reject':
+    post:
+      summary: '[Legacy] Reject vault document'
+      tags:
+        - 'Vault (legacy)'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Success'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+      security:
+        -
+          bearerAuth: []
+      parameters:
+        -
+          name: caseId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: null
+        -
+          name: docId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: null
+      requestBody:
+        required: true
         content:
           application/json:
             schema:
               type: object
               properties:
-                name: { type: string }
-                email: { type: string }
-                message: { type: string }
-                phone: { type: string }
+                reason:
+                  type: string
+  '/api/cases/{caseId}/documents/{docId}/comment':
+    post:
+      summary: '[Legacy] Comment on vault document'
+      tags:
+        - 'Vault (legacy)'
       responses:
         '200':
-          description: Submitted
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Success'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+      security:
+        -
+          bearerAuth: []
+      parameters:
+        -
+          name: caseId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: null
+        -
+          name: docId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: null
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                text:
+                  type: string
+  '/api/cases/{caseId}/documents/bundle':
+    get:
+      summary: '[Legacy] ZIP bundle of vault docs'
+      tags:
+        - 'Vault (legacy)'
+      responses:
+        '200':
+          description: ZIP
+          content:
+            application/zip:
+              schema:
+                type: string
+                format: binary
+      security:
+        -
+          bearerAuth: []
+      parameters:
+        -
+          name: caseId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: null
+  '/api/cases/{caseId}/document-checklist':
+    put:
+      summary: '[Legacy] Upsert document checklist'
+      tags:
+        - 'Vault (legacy)'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Success'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+      security:
+        -
+          bearerAuth: []
+      parameters:
+        -
+          name: caseId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: null
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: array
+              items:
+                type: object
+                properties:
+                  id: {type: string}
+                  docId: {type: string}
+                  name: {type: string}
+                  status: {type: string}
+                  size: {type: number}
+                  updated: {type: string}

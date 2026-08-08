@@ -1,0 +1,3 @@
+Hi {{greetingName}},
+
+We received your staff access request. An admin will review it shortly.

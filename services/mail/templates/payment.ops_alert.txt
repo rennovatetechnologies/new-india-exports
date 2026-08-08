@@ -1,0 +1,4 @@
+New paid customer: {{customer}}
+Plan: {{planName}}
+Amount: {{amountInrFormatted}}
+Case: {{caseId}}

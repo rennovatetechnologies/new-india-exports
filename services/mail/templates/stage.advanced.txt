@@ -1,0 +1,4 @@
+Hi {{greetingName}},
+
+Milestone complete: {{stageLabel}} ({{caseId}}).
+See next steps in your dashboard.

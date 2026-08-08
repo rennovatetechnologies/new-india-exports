@@ -70,7 +70,7 @@ Copy `.env.example` → `.env`. Never commit real secrets.
 | `MONGODB_URI` | Connection string | required for persistence |
 | `MONGODB_DB_NAME` | DB name | `new_india_exports` |
 | `JWT_SECRET` | JWT signing key | **change in production** |
-| `JWT_EXPIRE_HOURS` | Token TTL | `24` |
+| `JWT_EXPIRE_HOURS` | Token TTL | `2` |
 | `CORS_ORIGINS` | Comma-separated allowlist | local Vite origins |
 | `RAZORPAY_KEY_ID` | Public key | used by `/api/config/public` |
 | `RAZORPAY_KEY_SECRET` | Secret | order create / verify |

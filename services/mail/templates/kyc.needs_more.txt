@@ -1,0 +1,10 @@
+Hi {{greetingName}},
+
+We need more information on your KYC ({{caseId}}).
+
+Documents to update:
+{{missingDocsText}}
+
+Note: {{reason}}
+
+Update from your dashboard.

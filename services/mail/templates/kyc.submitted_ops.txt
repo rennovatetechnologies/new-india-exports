@@ -1,0 +1,4 @@
+KYC ready for review
+Legal name: {{legalName}}
+Email: {{customerEmail}}
+Case: {{caseId}}

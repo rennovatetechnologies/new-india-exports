@@ -1,81 +1,130 @@
 const express = require('express');
 const { requireDb } = require('../db');
-const { protect, requireRoles } = require('../middleware/auth');
+const { optionalAuth, requireRoles } = require('../middleware/auth');
 const { leadLimiter } = require('../middleware/rateLimit');
-const { normalizeEmail, utcnow, cleanDoc } = require('../services/helpers');
+const { validateBody } = require('../middleware/validate');
 const { asyncHandler } = require('../utils/asyncHandler');
+const { normalizeEmail, utcnow, cleanDoc } = require('../services/helpers');
+const { newTicketId } = require('../services/ids');
+const { enqueueEmail } = require('../services/mail');
+const { actorFromReq, writeAudit } = require('../services/audit');
+const config = require('../config');
+const {
+  supportTicketSchema,
+  leadContactSchema,
+  conciergeBookSchema,
+} = require('../schemas');
 
 const router = express.Router();
 
-const DEFAULT_FAQS = [
-  { id: '1', q: 'How long does IEC take?', a: 'Typically 3–7 business days after KYC.' },
-  { id: '2', q: 'What documents are needed?', a: 'PAN, Aadhaar, bank statement, photo, electricity bill.' },
-];
-
-router.get(
-  '/support/faqs',
-  asyncHandler(async (req, res) => {
-    const db = requireDb();
-    const rows = await db.collection('support_faqs').find({}).toArray();
-    if (!rows.length) return res.json(DEFAULT_FAQS);
-    return res.json(rows.map(cleanDoc));
-  })
-);
+router.get('/support/faqs', (req, res) => {
+  res.json([
+    { q: 'How do I start?', a: 'Sign up, choose a plan, pay, then complete KYC.' },
+    { q: 'How are invoices sent?', a: 'A GST tax invoice PDF is emailed after every successful payment.' },
+  ]);
+});
 
 router.get('/support/articles', (req, res) => {
   res.json([
     { id: 'a1', title: 'Getting started with export KYC', body: 'Complete the wizard and upload documents.' },
-    { id: 'a2', title: 'Understanding workflow stages', body: 'Your ops desk advances stages as docs clear.' },
   ]);
 });
 
 router.post(
-  '/support/concierge/book',
-  requireRoles('customer'),
-  asyncHandler(async (req, res) => {
-    const db = requireDb();
-    await db.collection('concierge_bookings').insertOne({
-      email: normalizeEmail(req.user.email),
-      preferredSlot: req.body?.preferredSlot || '',
-      note: req.body?.note || '',
-      createdAt: utcnow(),
-    });
-    return res.json({ ok: true, message: 'Concierge request received' });
-  })
-);
-
-router.post(
   '/support/tickets',
-  protect,
+  optionalAuth,
+  leadLimiter,
+  validateBody(supportTicketSchema),
   asyncHandler(async (req, res) => {
     const db = requireDb();
+    const id = await newTicketId();
+    const email = normalizeEmail(req.body.email || req.user?.email || '');
+    if (!email) {
+      return res.status(400).json({
+        success: false,
+        code: 'VALIDATION_ERROR',
+        message: 'Valid email required',
+      });
+    }
     const doc = {
-      email: normalizeEmail(req.user.email),
-      subject: req.body?.subject || '',
-      body: req.body?.body || '',
-      channel: req.body?.channel || 'app',
+      id,
+      email,
+      name: req.body.name || req.user?.name || '',
+      subject: req.body.subject || 'Support request',
+      body: req.body.body || '',
       status: 'open',
       createdAt: utcnow(),
     };
-    const result = await db.collection('support_tickets').insertOne(doc);
-    return res.json({ id: String(result.insertedId), status: 'open' });
+    await db.collection('support_tickets').insertOne(doc);
+    try {
+      if (email) {
+        await enqueueEmail({
+          to: email,
+          template: 'support.ticket_created',
+          vars: { id },
+          actor: actorFromReq(req),
+        });
+      }
+      await enqueueEmail({
+        to: config.supportEmail,
+        template: 'support.ticket_created',
+        vars: { id, message: doc.body },
+        actor: actorFromReq(req),
+      });
+    } catch (_) {}
+    await writeAudit(actorFromReq(req), 'support.ticket_created', {
+      resource: { type: 'support_ticket', id },
+    });
+    return res.json({ success: true, data: cleanDoc(doc), id });
+  })
+);
+
+router.get(
+  '/support/tickets',
+  requireRoles('admin', 'operations'),
+  asyncHandler(async (req, res) => {
+    const db = requireDb();
+    const rows = await db.collection('support_tickets').find({}).sort({ createdAt: -1 }).limit(100).toArray();
+    return res.json({ success: true, data: rows.map(cleanDoc), items: rows.map(cleanDoc) });
   })
 );
 
 router.post(
   '/leads/contact',
   leadLimiter,
+  validateBody(leadContactSchema),
   asyncHandler(async (req, res) => {
     const db = requireDb();
     const doc = {
-      name: req.body?.name || '',
-      email: normalizeEmail(req.body?.email),
-      message: req.body?.message || '',
-      plan: req.body?.plan || '',
+      email: req.body.email,
+      name: req.body.name,
+      phone: req.body.phone || '',
+      company: req.body.company || '',
+      message: req.body.message,
+      source: req.body.source || 'contact',
       createdAt: utcnow(),
     };
-    const result = await db.collection('leads').insertOne(doc);
-    return res.json({ ok: true, id: String(result.insertedId) });
+    await db.collection('leads').insertOne(doc);
+    return res.json({ success: true, ok: true });
+  })
+);
+
+router.post(
+  '/support/concierge/book',
+  leadLimiter,
+  validateBody(conciergeBookSchema),
+  asyncHandler(async (req, res) => {
+    const db = requireDb();
+    await db.collection('concierge_bookings').insertOne({
+      email: req.body.email,
+      name: req.body.name,
+      phone: req.body.phone || '',
+      company: req.body.company || '',
+      preferredSlot: req.body.preferredSlot || '',
+      message: req.body.message || '',
+      createdAt: utcnow(),
+    });
+    return res.json({ success: true, ok: true });
   })
 );
 

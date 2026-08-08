@@ -1,0 +1,5 @@
+Hi {{greetingName}},
+
+Please upload: {{label}}
+Case: {{caseId}}
+Reason: {{reason}}

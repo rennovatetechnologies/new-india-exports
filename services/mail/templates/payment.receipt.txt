@@ -1,0 +1,8 @@
+Hi {{greetingName}},
+
+Payment confirmed for {{planName}}.
+Amount: {{amountInrFormatted}}
+Payment ID: {{paymentId}}
+Case: {{caseId}}
+
+Your GST invoice is sent separately.

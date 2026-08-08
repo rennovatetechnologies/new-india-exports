@@ -1,0 +1,7 @@
+Hi {{greetingName}},
+
+Plan upgraded to {{planName}}.
+Amount: {{amountInrFormatted}}
+Case: {{caseId}}
+
+Invoice sent separately.

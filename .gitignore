@@ -6,3 +6,15 @@ __pycache__/
 node_modules
 npm-debug.log*
 package-lock.json
+.data/
+crash.log
+output.txt
+# Google Cloud service account keys (never commit)
+virastra-*-*.json
+**/credentials*.json
+**/*service-account*.json
+**/*-service-account.json
+client_secret_*.json
+**/client_secret*.json
+google-drive-oauth-token.json
+.tokens/

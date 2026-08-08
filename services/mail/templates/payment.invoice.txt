@@ -1,0 +1,9 @@
+Hi {{greetingName}},
+
+Tax Invoice {{invoiceNumber}}
+Seller: {{sellerLegalName}} ({{sellerGstin}})
+Description: {{description}}
+Taxable: {{taxableFormatted}}
+Grand total: {{grandTotalFormatted}}
+
+PDF attached.

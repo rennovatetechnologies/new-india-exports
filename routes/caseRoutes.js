@@ -1,280 +1,566 @@
 const express = require('express');
 const { requireDb } = require('../db');
 const { protect, requireRoles } = require('../middleware/auth');
-const { writeAudit } = require('../services/audit');
-const { normalizeEmail, utcnow, cleanDoc } = require('../services/helpers');
+const { validateBody, validateQuery } = require('../middleware/validate');
 const { asyncHandler } = require('../utils/asyncHandler');
+const { actorFromReq, writeAudit } = require('../services/audit');
+const { normalizeEmail, cleanDoc, utcnow } = require('../services/helpers');
+const { enqueueEmail } = require('../services/mail');
+const config = require('../config');
+const cases = require('../services/cases');
+const { newMessageId, newDocId } = require('../services/ids');
+const drive = require('../services/drive');
+const { uploadDoc } = require('../utils/uploads');
+const { uploadLimiter } = require('../middleware/rateLimit');
+const {
+  selectPlanSchema,
+  assignCaseSchema,
+  stageNoteSchema,
+  stageRejectSchema,
+  caseNoteSchema,
+  caseMessageSchema,
+  docRequestSchema,
+  opsRosterSchema,
+  caseListQuerySchema,
+} = require('../schemas');
 
 const router = express.Router();
-const STAGE_TOTAL = 8;
 
-function canAccessCase(user, caseDoc) {
-  if (user.role === 'operations' || user.role === 'admin') return true;
-  return normalizeEmail(caseDoc.accountEmail) === normalizeEmail(user.email);
-}
+router.get(
+  '/me/case',
+  requireRoles('customer'),
+  asyncHandler(async (req, res) => {
+    const doc = await cases.getOrCreateCaseForEmail(req.user.email, req.user.sub);
+    return res.json({ success: true, data: doc, ...doc });
+  })
+);
+
+router.patch(
+  '/me/case/plan',
+  requireRoles('customer'),
+  validateBody(selectPlanSchema),
+  asyncHandler(async (req, res) => {
+    const planId = req.body.planId;
+    const doc = await cases.selectPlan(req.user.email, planId, { actor: actorFromReq(req) });
+    await writeAudit(actorFromReq(req), 'plan.selected', {
+      resource: { type: 'customer_case', id: doc.id },
+      meta: { planId },
+    });
+    return res.json({ success: true, data: doc, ...doc });
+  })
+);
 
 router.get(
   '/cases',
-  protect,
+  requireRoles('operations', 'admin'),
+  validateQuery(caseListQuerySchema),
   asyncHandler(async (req, res) => {
     const db = requireDb();
     const query = {};
-    if (req.user.role === 'customer') query.accountEmail = normalizeEmail(req.user.email);
-    let rows = (await db.collection('cases').find(query).toArray()).map(cleanDoc);
-    const preset = req.query.preset;
-    if (preset === 'attention') rows = rows.filter((r) => r.sla === 'Due today' || r.sla === 'Breached');
-    else if (preset === 'active') rows = rows.filter((r) => Number(r.stage || 0) < STAGE_TOTAL);
-    else if (preset === 'complete') rows = rows.filter((r) => Number(r.stage || 0) >= STAGE_TOTAL);
-
-    const q = String(req.query.q || '').toLowerCase();
-    if (q) {
-      rows = rows.filter((r) => {
-        if (q.startsWith('sla:') && (r.sla || '').toLowerCase().includes(q.slice(4).trim())) return true;
-        if (q.startsWith('owner:') && (r.opsOwner || '').toLowerCase().includes(q.slice(6).trim())) return true;
-        if (q.startsWith('stage:') && String(r.stage) === q.slice(6).trim()) return true;
-        const blob = [r.id, r.title, r.buyer, r.accountName, r.accountCompany, r.opsOwner, r.sla]
-          .join(' ')
-          .toLowerCase();
-        return blob.includes(q);
-      });
+    if (req.user.role === 'operations') {
+      query.$or = [
+        { opsEmail: normalizeEmail(req.user.email) },
+        { opsEmail: null },
+        { opsEmail: '' },
+      ];
     }
-
-    const sort = req.query.sort;
-    if (sort === 'caseId') rows.sort((a, b) => String(a.id).localeCompare(String(b.id)));
-    else if (sort === 'stage') rows.sort((a, b) => Number(a.stage || 0) - Number(b.stage || 0));
-    else {
-      const order = { Breached: 0, 'Due today': 1, 'On track': 2 };
-      rows.sort(
-        (a, b) =>
-          (order[a.sla] ?? 9) - (order[b.sla] ?? 9) || Number(b.stage || 0) - Number(a.stage || 0)
+    if (req.query.status) query.status = String(req.query.status);
+    if (req.query.kycStatus) query.kycStatus = String(req.query.kycStatus);
+    if (req.query.opsEmail) query.opsEmail = req.query.opsEmail;
+    const q = String(req.query.q || '').trim().toLowerCase();
+    let rows = await db.collection('customer_cases').find(query).sort({ updatedAt: -1 }).toArray();
+    rows = rows.map(cases.publicCase);
+    if (q) {
+      rows = rows.filter((r) =>
+        [r.id, r.customerEmail, r.opsEmail, r.opsName, r.planId, r.kycProfile?.legalName]
+          .join(' ')
+          .toLowerCase()
+          .includes(q)
       );
     }
     return res.json(rows);
   })
 );
 
-router.post(
-  '/cases',
-  requireRoles('operations', 'admin'),
-  asyncHandler(async (req, res) => {
-    const db = requireDb();
-    let caseId = `VST-${Math.floor(2000 + Math.random() * 8000)}`;
-    while (await db.collection('cases').findOne({ id: caseId })) {
-      caseId = `VST-${Math.floor(2000 + Math.random() * 8000)}`;
-    }
-    const doc = {
-      id: caseId,
-      title: req.body?.title || '',
-      buyer: req.body?.buyer || '',
-      value: req.body?.value || '',
-      stage: Number(req.body?.stage || 0),
-      accountName: req.body?.accountName || '',
-      accountCompany: req.body?.accountCompany || '',
-      accountEmail: normalizeEmail(req.body?.accountEmail),
-      sla: req.body?.sla || 'On track',
-      opsOwner: req.body?.opsOwner || req.user.name || req.user.email,
-      createdAt: utcnow(),
-      updatedAt: utcnow(),
-    };
-    await db.collection('cases').insertOne(doc);
-    await writeAudit(req.user.email || '', 'case_create', { meta: { id: caseId } });
-    return res.json(cleanDoc(doc));
-  })
-);
-
 router.get(
   '/cases/:caseId',
   protect,
   asyncHandler(async (req, res) => {
-    const db = requireDb();
-    const caseDoc = await db.collection('cases').findOne({ id: req.params.caseId });
-    if (!caseDoc) return res.status(404).json({ success: false, message: 'Case not found' });
-    if (!canAccessCase(req.user, caseDoc)) {
-      return res.status(403).json({ success: false, message: 'Access denied' });
+    const doc = await cases.getCaseById(req.params.caseId);
+    if (!doc) return res.status(404).json({ success: false, message: 'Case not found' });
+    if (!cases.canAccessCase(req.user, doc) && req.user.role !== 'admin' && req.user.role !== 'operations') {
+      return res.status(403).json({ success: false, message: 'Forbidden' });
     }
-    return res.json(cleanDoc(caseDoc));
+    // operations can view all for queue; tighten only if assigned filter needed — admin all, ops all for v1
+    if (req.user.role === 'customer' && !cases.canAccessCase(req.user, doc)) {
+      return res.status(403).json({ success: false, message: 'Forbidden' });
+    }
+    return res.json({ success: true, data: doc, ...doc });
   })
 );
 
 router.patch(
-  '/cases/:caseId',
+  '/cases/:caseId/assign',
   requireRoles('operations', 'admin'),
+  validateBody(assignCaseSchema),
   asyncHandler(async (req, res) => {
-    const db = requireDb();
-    const caseDoc = await db.collection('cases').findOne({ id: req.params.caseId });
-    if (!caseDoc) return res.status(404).json({ success: false, message: 'Case not found' });
-    const fields = [
-      'title',
-      'buyer',
-      'value',
-      'sla',
-      'opsOwner',
-      'accountName',
-      'accountCompany',
-      'accountEmail',
-    ];
-    const updates = {};
-    for (const f of fields) {
-      if (req.body?.[f] !== undefined) updates[f] = req.body[f];
-    }
-    if (updates.accountEmail) updates.accountEmail = normalizeEmail(updates.accountEmail);
-    updates.updatedAt = utcnow();
-    await db.collection('cases').updateOne({ id: req.params.caseId }, { $set: updates });
-    const updated = await db.collection('cases').findOne({ id: req.params.caseId });
-    return res.json(cleanDoc(updated));
+    const opsEmail = req.body.opsEmail;
+    const roster = await cases.getOpsRoster();
+    const hit = roster.find((o) => o.email === opsEmail);
+    const doc = await cases.updateCase(
+      req.params.caseId,
+      { opsEmail, opsName: req.body.opsName || hit?.name || opsEmail },
+      { actor: actorFromReq(req) }
+    );
+    return res.json({ success: true, data: doc });
   })
 );
 
 router.post(
   '/cases/:caseId/stage/approve',
   requireRoles('operations', 'admin'),
+  validateBody(stageNoteSchema),
   asyncHandler(async (req, res) => {
-    const db = requireDb();
-    const caseDoc = await db.collection('cases').findOne({ id: req.params.caseId });
-    if (!caseDoc) return res.status(404).json({ success: false, message: 'Case not found' });
-    const stage = Number(caseDoc.stage || 0);
-    if (stage >= STAGE_TOTAL) return res.json({ stage });
-    const newStage = stage + 1;
-    await db
-      .collection('cases')
-      .updateOne({ id: req.params.caseId }, { $set: { stage: newStage, updatedAt: utcnow() } });
-    await db.collection('case_activity').insertOne({
-      caseId: req.params.caseId,
-      who: req.user.name || req.user.email,
-      text: `Approved stage → ${newStage}`,
-      kind: 'approve',
-      when: utcnow().toISOString(),
-    });
-    await writeAudit(req.user.email || '', 'stage_approve', {
-      meta: { caseId: req.params.caseId, stage: newStage },
-    });
-    return res.json({ stage: newStage });
+    const cur = await cases.getCaseById(req.params.caseId);
+    if (!cur) return res.status(404).json({ success: false, message: 'Not found' });
+    const prevIndex = Math.max(0, Number(cur.stageIndex || 0));
+    const nextIndex = prevIndex + 1;
+    const notes = { ...(cur.stageNotes || {}) };
+    if (req.body.note) {
+      notes[prevIndex] = { text: String(req.body.note), at: utcnow().toISOString() };
+    }
+    const doc = await cases.updateCase(
+      cur.id,
+      { stageIndex: nextIndex, stageNotes: notes },
+      { actor: actorFromReq(req) }
+    );
+    let stageLabel = `Stage ${nextIndex}`;
+    try {
+      const planId = cur.paidPlanId || cur.planId;
+      if (planId) {
+        const plan = await requireDb()
+          .collection('plans')
+          .findOne({ id: planId });
+        const stages = plan?.workflowStages || [];
+        stageLabel = stages[prevIndex]?.label || stages[nextIndex]?.label || stageLabel;
+      }
+    } catch (_) {}
+    try {
+      await enqueueEmail({
+        to: cur.customerEmail,
+        template: 'stage.advanced',
+        vars: {
+          caseId: cur.id,
+          stageLabel,
+          customerName: cur.kycProfile?.legalName || cur.customerEmail,
+          ctaUrl: `${config.frontendUrl}/dashboard/workflow`,
+        },
+        actor: actorFromReq(req),
+      });
+    } catch (_) {}
+    return res.json({ success: true, data: doc, ...doc });
   })
 );
 
 router.post(
   '/cases/:caseId/stage/reject',
   requireRoles('operations', 'admin'),
+  validateBody(stageRejectSchema),
   asyncHandler(async (req, res) => {
-    const db = requireDb();
-    const caseDoc = await db.collection('cases').findOne({ id: req.params.caseId });
-    if (!caseDoc) return res.status(404).json({ success: false, message: 'Case not found' });
-    const stage = Number(caseDoc.stage || 0);
-    const newStage = Math.max(0, stage - 1);
-    await db
-      .collection('cases')
-      .updateOne({ id: req.params.caseId }, { $set: { stage: newStage, updatedAt: utcnow() } });
-    await db.collection('case_activity').insertOne({
-      caseId: req.params.caseId,
-      who: req.user.name || req.user.email,
-      text: req.body?.reason || 'Stage rejected',
-      kind: 'reject',
-      when: utcnow().toISOString(),
-    });
-    await writeAudit(req.user.email || '', 'stage_reject', {
-      meta: { caseId: req.params.caseId, stage: newStage },
-    });
-    return res.json({ stage: newStage });
-  })
-);
-
-router.get(
-  '/cases/:caseId/activity',
-  protect,
-  asyncHandler(async (req, res) => {
-    const db = requireDb();
-    const caseDoc = await db.collection('cases').findOne({ id: req.params.caseId });
-    if (!caseDoc) return res.status(404).json({ success: false, message: 'Case not found' });
-    if (!canAccessCase(req.user, caseDoc)) {
-      return res.status(403).json({ success: false, message: 'Access denied' });
-    }
-    const rows = await db
-      .collection('case_activity')
-      .find({ caseId: req.params.caseId })
-      .sort({ when: -1 })
-      .toArray();
-    return res.json(rows.map(cleanDoc));
+    const cur = await cases.getCaseById(req.params.caseId);
+    if (!cur) return res.status(404).json({ success: false, message: 'Not found' });
+    const reason = String(req.body.reason || 'Update required');
+    const notes = { ...(cur.stageNotes || {}) };
+    notes[cur.stageIndex || 0] = { text: reason, at: utcnow().toISOString(), rejected: true };
+    const doc = await cases.updateCase(cur.id, { stageNotes: notes }, { actor: actorFromReq(req) });
+    try {
+      await enqueueEmail({
+        to: cur.customerEmail,
+        template: 'stage.rejected',
+        vars: {
+          caseId: cur.id,
+          stageLabel: `Stage ${cur.stageIndex || 0}`,
+          reason,
+          ctaUrl: `${config.frontendUrl}/dashboard`,
+        },
+        actor: actorFromReq(req),
+      });
+    } catch (_) {}
+    return res.json({ success: true, data: doc, ...doc });
   })
 );
 
 router.post(
-  '/cases/:caseId/activity',
-  protect,
+  '/cases/:caseId/notes',
+  requireRoles('operations', 'admin'),
+  validateBody(caseNoteSchema),
   asyncHandler(async (req, res) => {
     const db = requireDb();
-    const caseDoc = await db.collection('cases').findOne({ id: req.params.caseId });
-    if (!caseDoc) return res.status(404).json({ success: false, message: 'Case not found' });
-    if (!canAccessCase(req.user, caseDoc)) {
-      return res.status(403).json({ success: false, message: 'Access denied' });
-    }
-    const kind = ['comment', 'approve', 'reject'].includes(req.body?.kind) ? req.body.kind : 'comment';
-    const entry = {
-      caseId: req.params.caseId,
-      who: req.user.name || req.user.email,
-      text: req.body?.text || '',
-      kind,
-      when: utcnow().toISOString(),
+    const note = {
+      id: `NOTE-${Date.now()}`,
+      body: String(req.body.body || ''),
+      authorEmail: normalizeEmail(req.user.email),
+      authorName: req.user.name || '',
+      createdAt: utcnow(),
     };
-    await db.collection('case_activity').insertOne(entry);
-    return res.json(cleanDoc(entry));
+    await db.collection('customer_cases').updateOne(
+      { id: req.params.caseId },
+      { $push: { internalNotes: note }, $set: { updatedAt: utcnow() } }
+    );
+    await writeAudit(actorFromReq(req), 'case.note', {
+      resource: { type: 'customer_case', id: req.params.caseId },
+      meta: { noteId: note.id },
+    });
+    return res.json({ success: true, data: note });
   })
 );
 
 router.get(
-  '/workspace/search',
+  '/ops/roster',
+  requireRoles('operations', 'admin'),
+  asyncHandler(async (req, res) => {
+    return res.json({ success: true, data: await cases.getOpsRoster() });
+  })
+);
+
+router.put(
+  '/ops/roster',
+  requireRoles('admin'),
+  validateBody(opsRosterSchema),
+  asyncHandler(async (req, res) => {
+    const list = await cases.saveOpsRoster(req.body.roster || []);
+    await writeAudit(actorFromReq(req), 'ops.roster_updated', { meta: { count: list.length } });
+    return res.json({ success: true, data: list });
+  })
+);
+
+// Messages
+router.get(
+  '/cases/:caseId/messages',
   protect,
   asyncHandler(async (req, res) => {
-    req.query.q = req.query.q || '';
-    // Reuse list logic by forwarding to cases handler path
-    const db = requireDb();
-    const query = {};
-    if (req.user.role === 'customer') query.accountEmail = normalizeEmail(req.user.email);
-    let rows = (await db.collection('cases').find(query).toArray()).map(cleanDoc);
-    const q = String(req.query.q || '').toLowerCase();
-    if (q) {
-      rows = rows.filter((r) => {
-        const blob = [r.id, r.title, r.buyer, r.accountName, r.accountCompany, r.opsOwner, r.sla]
-          .join(' ')
-          .toLowerCase();
-        return blob.includes(q);
-      });
+    const caseDoc = await cases.getCaseById(req.params.caseId);
+    if (!caseDoc) return res.status(404).json({ success: false, message: 'Not found' });
+    if (req.user.role === 'customer' && !cases.canAccessCase(req.user, caseDoc)) {
+      return res.status(403).json({ success: false, message: 'Forbidden' });
     }
-    return res.json(rows.slice(0, 20));
+    const db = requireDb();
+    const items = await db
+      .collection('case_messages')
+      .find({ caseId: caseDoc.id })
+      .sort({ createdAt: 1 })
+      .toArray();
+    return res.json({ success: true, data: items.map(cleanDoc), items: items.map(cleanDoc) });
+  })
+);
+
+router.post(
+  '/cases/:caseId/messages',
+  protect,
+  validateBody(caseMessageSchema),
+  asyncHandler(async (req, res) => {
+    const caseDoc = await cases.getCaseById(req.params.caseId);
+    if (!caseDoc) return res.status(404).json({ success: false, message: 'Not found' });
+    if (req.user.role === 'customer' && !cases.canAccessCase(req.user, caseDoc)) {
+      return res.status(403).json({ success: false, message: 'Forbidden' });
+    }
+    const body = String(req.body.body || '').trim();
+    if (!body) return res.status(400).json({ success: false, message: 'body required' });
+    const db = requireDb();
+    const msg = {
+      id: await newMessageId(),
+      caseId: caseDoc.id,
+      body,
+      fromEmail: normalizeEmail(req.user.email),
+      fromRole: req.user.role,
+      fromName: req.user.name || '',
+      createdAt: utcnow(),
+      readAt: null,
+    };
+    await db.collection('case_messages').insertOne(msg);
+    const toOps = req.user.role === 'customer';
+    try {
+      await enqueueEmail({
+        to: toOps ? caseDoc.opsEmail || config.opsInbox : caseDoc.customerEmail,
+        template: toOps ? 'message.customer_to_ops' : 'message.ops_to_customer',
+        vars: {
+          name: msg.fromName || msg.fromEmail,
+          body,
+          caseId: caseDoc.id,
+          ctaUrl: `${config.frontendUrl}/dashboard/messages`,
+        },
+        actor: actorFromReq(req),
+      });
+    } catch (_) {}
+    await writeAudit(actorFromReq(req), 'message.sent', {
+      resource: { type: 'customer_case', id: caseDoc.id },
+      meta: { messageId: msg.id },
+    });
+    return res.json({ success: true, data: cleanDoc(msg) });
   })
 );
 
 router.get(
-  '/dashboard/overview',
-  requireRoles('customer'),
+  '/me/messages/unread-count',
+  protect,
   asyncHandler(async (req, res) => {
     const db = requireDb();
     const email = normalizeEmail(req.user.email);
-    const cases = await db.collection('cases').find({ accountEmail: email }).toArray();
-    const active = cases.filter((c) => Number(c.stage || 0) < STAGE_TOTAL);
-    return res.json({
-      plan: 'Standard',
-      onboardingPct: cases.some((c) => Number(c.stage || 0) >= 2) ? 72 : 40,
-      openCases: active.length,
-      docsPending: 0,
-      sla: 'On track',
-      cases: cases.slice(0, 5).map(cleanDoc),
-    });
+    let caseIds = [];
+    if (req.user.role === 'customer') {
+      const c = await cases.getCaseByEmail(email);
+      if (c) caseIds = [c.id];
+    } else {
+      const rows = await db
+        .collection('customer_cases')
+        .find(req.user.role === 'admin' ? {} : { opsEmail: email })
+        .project({ id: 1 })
+        .toArray();
+      caseIds = rows.map((r) => r.id);
+    }
+    const count = caseIds.length
+      ? await db.collection('case_messages').countDocuments({
+          caseId: { $in: caseIds },
+          fromEmail: { $ne: email },
+          readAt: null,
+        })
+      : 0;
+    return res.json({ success: true, data: { count }, count });
   })
 );
 
+// Documents
 router.get(
-  '/ops/stats',
-  requireRoles('operations', 'admin'),
+  '/cases/:caseId/documents',
+  protect,
   asyncHandler(async (req, res) => {
+    const caseDoc = await cases.getCaseById(req.params.caseId);
+    if (!caseDoc) return res.status(404).json({ success: false, message: 'Not found' });
+    if (req.user.role === 'customer' && !cases.canAccessCase(req.user, caseDoc)) {
+      return res.status(403).json({ success: false, message: 'Forbidden' });
+    }
     const db = requireDb();
-    const cases = await db.collection('cases').find({}).toArray();
-    const customers = await db.collection('users').countDocuments({ role: 'customer' });
-    return res.json({
-      activeCustomers: customers,
-      openCases: cases.filter((c) => Number(c.stage || 0) < STAGE_TOTAL).length,
-      mtdRevenue: 0,
-      slaBreaches: cases.filter((c) => c.sla === 'Breached').length,
+    const items = await db
+      .collection('case_documents')
+      .find({ caseId: caseDoc.id, deletedAt: null })
+      .sort({ uploadedAt: -1 })
+      .toArray();
+    return res.json({ success: true, data: items.map(cleanDoc), items: items.map(cleanDoc) });
+  })
+);
+
+router.post(
+  '/cases/:caseId/documents',
+  protect,
+  uploadLimiter,
+  uploadDoc.single('file'),
+  asyncHandler(async (req, res) => {
+    const caseDoc = await cases.getCaseById(req.params.caseId);
+    if (!caseDoc) return res.status(404).json({ success: false, message: 'Not found' });
+    if (req.user.role === 'customer' && !cases.canAccessCase(req.user, caseDoc)) {
+      return res.status(403).json({ success: false, message: 'Forbidden' });
+    }
+    if (!req.file) return res.status(400).json({ success: false, message: 'File required' });
+    const from = req.user.role === 'customer' ? 'customer' : 'ops';
+    const labelRaw = String(req.body?.label || req.body?.title || '').trim();
+    const noteRaw = String(req.body?.note || req.body?.description || '').trim();
+    if (from === 'ops' && !labelRaw) {
+      return res.status(400).json({
+        success: false,
+        message: 'Please enter what this document is (e.g. IEC certificate)',
+      });
+    }
+    const label = labelRaw || req.file.originalname;
+    const folders = await drive.ensureCaseFolders(caseDoc.customerEmail, caseDoc.id);
+    const folderId = from === 'ops' ? folders.fromOpsId : folders.fromCustomerId;
+    const uploaded = await drive.upload({
+      folderId,
+      buffer: req.file.buffer,
+      fileName: req.file.originalname,
+      mimeType: req.file.mimetype,
+      appProperties: { caseId: caseDoc.id, uploadedBy: req.user.email, role: req.user.role },
     });
+    const db = requireDb();
+    const doc = {
+      id: await newDocId(),
+      caseId: caseDoc.id,
+      name: req.file.originalname,
+      label,
+      note: noteRaw || null,
+      from,
+      status: 'ready',
+      fileId: uploaded.fileId,
+      driveFileId: uploaded.driveFileId,
+      size: uploaded.size,
+      mimeType: req.file.mimetype,
+      stageId: req.body?.stageId || null,
+      requestId: req.body?.requestId || null,
+      uploadedAt: utcnow(),
+      uploadedBy: normalizeEmail(req.user.email),
+      deletedAt: null,
+    };
+    await db.collection('case_documents').insertOne(doc);
+    await db.collection('customer_cases').updateOne(
+      { id: caseDoc.id },
+      {
+        $push: {
+          documents: {
+            id: doc.id,
+            name: doc.name,
+            label: doc.label,
+            note: doc.note,
+            from: doc.from,
+            status: doc.status,
+            uploadedAt: doc.uploadedAt,
+            fileId: doc.fileId,
+          },
+        },
+        $set: { updatedAt: utcnow() },
+      }
+    );
+    try {
+      if (from === 'customer' && caseDoc.opsEmail) {
+        await enqueueEmail({
+          to: caseDoc.opsEmail,
+          template: 'doc.uploaded_ops',
+          vars: {
+            caseId: caseDoc.id,
+            label: doc.label || doc.name,
+            customerName: caseDoc.kycProfile?.legalName || caseDoc.customerEmail,
+            customerEmail: caseDoc.customerEmail,
+            ctaUrl: `${config.frontendUrl}/admin/workflow/${encodeURIComponent(caseDoc.id)}`,
+          },
+          actor: actorFromReq(req),
+        });
+      } else if (from === 'ops') {
+        // Attach file when small enough for email; otherwise dashboard link only
+        const maxAttach = 8 * 1024 * 1024;
+        const canAttach = req.file.buffer && req.file.buffer.length <= maxAttach;
+        const displayLabel = doc.label || doc.name;
+        await enqueueEmail({
+          to: caseDoc.customerEmail,
+          template: 'doc.delivered_customer',
+          vars: {
+            caseId: caseDoc.id,
+            label: displayLabel,
+            note: doc.note || '',
+            customerName: caseDoc.kycProfile?.legalName || caseDoc.customerEmail,
+            hasAttachment: canAttach,
+            attachmentNames: canAttach ? [doc.name] : [],
+            attachmentNote: canAttach
+              ? `${displayLabel} (${doc.name}) is attached. You can also download it from your workspace.`
+              : 'The file is available in your workspace (too large to attach here).',
+            ctaUrl: `${config.frontendUrl}/dashboard/documents`,
+          },
+          attachments: canAttach
+            ? [
+                {
+                  filename: doc.name,
+                  content: req.file.buffer,
+                  contentType: req.file.mimetype || 'application/octet-stream',
+                },
+              ]
+            : [],
+          actor: actorFromReq(req),
+        });
+      }
+    } catch (_) {}
+    return res.json({ success: true, data: cleanDoc(doc) });
+  })
+);
+
+router.post(
+  '/cases/:caseId/doc-requests',
+  requireRoles('operations', 'admin'),
+  validateBody(docRequestSchema),
+  asyncHandler(async (req, res) => {
+    const caseDoc = await cases.getCaseById(req.params.caseId);
+    if (!caseDoc) return res.status(404).json({ success: false, message: 'Not found' });
+    const db = requireDb();
+    const reqDoc = {
+      id: `DREQ-${Date.now().toString(36).toUpperCase()}`,
+      caseId: caseDoc.id,
+      label: String(req.body.label || 'Document'),
+      reason: String(req.body.reason || ''),
+      status: 'open',
+      createdAt: utcnow(),
+      createdBy: normalizeEmail(req.user.email),
+    };
+    await db.collection('doc_requests').insertOne(reqDoc);
+    await db.collection('customer_cases').updateOne(
+      { id: caseDoc.id },
+      { $push: { docRequests: reqDoc }, $set: { updatedAt: utcnow() } }
+    );
+    try {
+      await enqueueEmail({
+        to: caseDoc.customerEmail,
+        template: 'doc.requested',
+        vars: {
+          label: reqDoc.label,
+          reason: reqDoc.reason,
+          caseId: caseDoc.id,
+          ctaUrl: `${config.frontendUrl}/dashboard/documents`,
+        },
+        actor: actorFromReq(req),
+      });
+    } catch (_) {}
+    return res.json({ success: true, data: cleanDoc(reqDoc) });
+  })
+);
+
+router.post(
+  '/cases/:caseId/doc-requests/:reqId/fulfill',
+  requireRoles('customer'),
+  uploadLimiter,
+  uploadDoc.single('file'),
+  asyncHandler(async (req, res) => {
+    const caseDoc = await cases.getCaseById(req.params.caseId);
+    if (!caseDoc || !cases.canAccessCase(req.user, caseDoc)) {
+      return res.status(403).json({ success: false, message: 'Forbidden' });
+    }
+    if (!req.file) return res.status(400).json({ success: false, message: 'File required' });
+    req.body = req.body || {};
+    req.body.requestId = req.params.reqId;
+    // reuse upload path logic by calling folders + insert
+    const folders = await drive.ensureCaseFolders(caseDoc.customerEmail, caseDoc.id);
+    const uploaded = await drive.upload({
+      folderId: folders.fromCustomerId,
+      buffer: req.file.buffer,
+      fileName: req.file.originalname,
+      mimeType: req.file.mimetype,
+      appProperties: { caseId: caseDoc.id, requestId: req.params.reqId, uploadedBy: req.user.email },
+    });
+    const db = requireDb();
+    const doc = {
+      id: await newDocId(),
+      caseId: caseDoc.id,
+      name: req.file.originalname,
+      from: 'customer',
+      status: 'ready',
+      fileId: uploaded.fileId,
+      driveFileId: uploaded.driveFileId,
+      size: uploaded.size,
+      mimeType: req.file.mimetype,
+      requestId: req.params.reqId,
+      uploadedAt: utcnow(),
+      uploadedBy: normalizeEmail(req.user.email),
+      deletedAt: null,
+    };
+    await db.collection('case_documents').insertOne(doc);
+    await db.collection('doc_requests').updateOne(
+      { id: req.params.reqId },
+      { $set: { status: 'fulfilled', fulfilledAt: utcnow(), documentId: doc.id } }
+    );
+    await db.collection('customer_cases').updateOne(
+      { id: caseDoc.id, 'docRequests.id': req.params.reqId },
+      {
+        $set: {
+          'docRequests.$.status': 'fulfilled',
+          updatedAt: utcnow(),
+        },
+      }
+    );
+    return res.json({ success: true, data: cleanDoc(doc) });
   })
 );
 

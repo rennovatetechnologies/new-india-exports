@@ -1,0 +1,5 @@
+Hi {{greetingName}},
+
+Seat confirmed for {{title}}.
+Date: {{date}}
+City: {{city}}

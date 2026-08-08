@@ -1,0 +1,4 @@
+Hi {{greetingName}},
+
+Your staff access has been suspended.
+Reason: {{reason}}

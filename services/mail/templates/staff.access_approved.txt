@@ -1,0 +1,3 @@
+Hi {{greetingName}},
+
+Your staff access is active. Sign in with email OTP.

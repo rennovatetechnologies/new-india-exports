@@ -1,0 +1,1 @@
+../../shared/docs/API_CONTRACT.md

@@ -1,0 +1,3 @@
+Hi {{greetingName}},
+
+Your registration for {{title}} has been cancelled.

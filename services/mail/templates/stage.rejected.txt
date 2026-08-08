@@ -1,0 +1,4 @@
+Hi {{greetingName}},
+
+Update needed for {{stageLabel}} ({{caseId}}).
+Feedback: {{reason}}

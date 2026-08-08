@@ -6,24 +6,28 @@ const multer = require('multer');
 const config = require('./config');
 const { connectDb } = require('./db');
 const { seedIfEmpty } = require('./scripts/seed');
-const { verifyWebhookSignature } = require('./services/razorpay');
+const { verifyWebhookSignature, capturePayment, markPaymentFailed } = require('./services/payments');
+const { requestIdMiddleware } = require('./middleware/auth');
+const drive = require('./services/drive');
 
 const authRoutes = require('./routes/authRoutes');
 const { staffRouter, rbacRouter } = require('./routes/staffRoutes');
 const kycRoutes = require('./routes/kycRoutes');
 const caseRoutes = require('./routes/caseRoutes');
-const vaultRoutes = require('./routes/vaultRoutes');
 const paymentRoutes = require('./routes/paymentRoutes');
+const invoiceRoutes = require('./routes/invoiceRoutes');
 const planRoutes = require('./routes/planRoutes');
 const eventRoutes = require('./routes/eventRoutes');
 const meRoutes = require('./routes/meRoutes');
 const adminRoutes = require('./routes/adminRoutes');
 const supportRoutes = require('./routes/supportRoutes');
+const fileRoutes = require('./routes/fileRoutes');
 const { mountSwagger } = require('./middleware/swagger');
 
 const app = express();
 
 app.set('trust proxy', 1);
+app.use(requestIdMiddleware);
 
 app.use(
   cors({
@@ -35,15 +39,41 @@ app.use(
 app.use(morgan(config.isProduction ? 'combined' : 'dev'));
 
 // Razorpay webhook needs raw body BEFORE json parser
-app.post('/api/webhooks/razorpay', express.raw({ type: 'application/json' }), (req, res) => {
+app.post('/api/webhooks/razorpay', express.raw({ type: 'application/json' }), async (req, res) => {
   try {
     const sig = req.headers['x-razorpay-signature'];
     const raw = Buffer.isBuffer(req.body) ? req.body : Buffer.from('');
     if (!verifyWebhookSignature(raw, sig)) {
       return res.status(400).json({ success: false, message: 'Invalid webhook signature' });
     }
+    const payload = JSON.parse(raw.toString('utf8') || '{}');
+    const event = payload.event;
+    const entity = payload.payload?.payment?.entity || payload.payload?.order?.entity || {};
+
+    if (event === 'payment.captured' || event === 'order.paid') {
+      const orderId = entity.order_id || payload.payload?.order?.entity?.id;
+      const paymentId = entity.id || payload.payload?.payment?.entity?.id;
+      if (orderId && paymentId) {
+        await capturePayment({
+          razorpayOrderId: orderId,
+          razorpayPaymentId: paymentId,
+          source: 'webhook',
+          actor: { email: 'razorpay', role: 'system' },
+        });
+      }
+    } else if (event === 'payment.failed') {
+      const orderId = entity.order_id;
+      if (orderId) {
+        await markPaymentFailed({
+          razorpayOrderId: orderId,
+          reason: entity.error_description || 'payment.failed',
+          actor: { email: 'razorpay', role: 'system' },
+        });
+      }
+    }
     return res.json({ ok: true });
   } catch (e) {
+    console.error('webhook error:', e);
     return res.status(500).json({ success: false, message: e.message });
   }
 });
@@ -52,28 +82,51 @@ app.use(express.json({ limit: '2mb' }));
 app.use(express.urlencoded({ extended: true }));
 
 app.use((req, res, next) => {
-  console.log(`${new Date().toISOString()} - ${req.method} ${req.path}`);
+  if (!config.isProduction) {
+    console.log(`${new Date().toISOString()} - ${req.method} ${req.path}`);
+  }
   next();
 });
 
 app.get('/', (req, res) => {
-  res.json({ status: 'New India Export Backend Running' });
+  res.json({
+    status: 'New India Export Backend Running',
+    version: '2.3.0-production',
+    env: config.appEnv,
+  });
 });
 
-mountSwagger(app);
+app.get('/health', (req, res) => {
+  res.json({ ok: true, env: config.appEnv });
+});
+
+if (config.enableDocs) {
+  mountSwagger(app);
+}
 
 app.use('/api/auth', authRoutes);
 app.use('/api/staff', staffRouter);
 app.use('/api/rbac', rbacRouter);
 app.use('/api/kyc', kycRoutes);
 app.use('/api', caseRoutes);
-app.use('/api/cases', vaultRoutes);
 app.use('/api', paymentRoutes);
+app.use('/api', invoiceRoutes);
 app.use('/api', planRoutes);
 app.use('/api', eventRoutes);
 app.use('/api', meRoutes);
+app.use('/api', fileRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api', supportRoutes);
+
+if (config.enableLegacyShipment) {
+  try {
+    const vaultRoutes = require('./routes/vaultRoutes');
+    app.use('/api/cases', vaultRoutes);
+    console.warn('ENABLE_LEGACY_SHIPMENT=true — vault/shipment routes mounted');
+  } catch (e) {
+    console.warn('Legacy vault routes unavailable:', e.message);
+  }
+}
 
 app.use((err, req, res, next) => {
   console.error('GLOBAL ERROR:', err);
@@ -93,6 +146,15 @@ async function start() {
   try {
     await connectDb();
     await seedIfEmpty();
+    try {
+      await drive.ensureRootTree();
+      console.log(
+        'Drive root tree ready',
+        drive.driveConfigured() ? `(Google ${drive.driveMode()})` : '(local fallback)'
+      );
+    } catch (e) {
+      console.warn('Drive bootstrap warning:', e.message);
+    }
   } catch (e) {
     console.error('Startup DB/seed error:', e.message);
   }

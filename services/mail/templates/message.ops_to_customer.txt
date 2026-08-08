@@ -1,0 +1,5 @@
+Hi {{greetingName}},
+
+Message from your VIRASTRA desk ({{caseId}}):
+
+{{body}}
