@@ -204,7 +204,8 @@ function deriveStatus(c) {
   }
   if (isPlanExpired(c)) return CASE_STATUS.EXPIRED;
   if (c.kycStatus === KYC_STATUS.APPROVED) {
-    return isWorkflowComplete(c) ? CASE_STATUS.COMPLETED : CASE_STATUS.ACTIVE;
+    if (c.status === CASE_STATUS.COMPLETED || isWorkflowComplete(c)) return CASE_STATUS.COMPLETED;
+    return CASE_STATUS.ACTIVE;
   }
   if (c.kycStatus === KYC_STATUS.SUBMITTED) return CASE_STATUS.KYC_PENDING;
   return CASE_STATUS.KYC_INCOMPLETE;
