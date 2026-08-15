@@ -7,6 +7,7 @@ const config = require('./config');
 const { connectDb } = require('./db');
 const { seedIfEmpty } = require('./scripts/seed');
 const { verifyWebhookSignature, capturePayment, markPaymentFailed } = require('./services/payments');
+const { startReminderJob } = require('./services/installments');
 const { requestIdMiddleware } = require('./middleware/auth');
 const drive = require('./services/drive');
 
@@ -142,21 +143,43 @@ app.use((err, req, res, next) => {
   return res.status(status).json(body);
 });
 
+async function bootDb() {
+  await connectDb();
+  await seedIfEmpty();
+  try {
+    await drive.ensureRootTree();
+    console.log(
+      'Drive root tree ready',
+      drive.driveConfigured() ? `(Google ${drive.driveMode()})` : '(local fallback)'
+    );
+  } catch (e) {
+    console.warn('Drive bootstrap warning:', e.message);
+  }
+  startReminderJob();
+}
+
 async function start() {
   try {
-    await connectDb();
-    await seedIfEmpty();
-    try {
-      await drive.ensureRootTree();
-      console.log(
-        'Drive root tree ready',
-        drive.driveConfigured() ? `(Google ${drive.driveMode()})` : '(local fallback)'
-      );
-    } catch (e) {
-      console.warn('Drive bootstrap warning:', e.message);
-    }
+    await bootDb();
   } catch (e) {
     console.error('Startup DB/seed error:', e.message);
+    console.error(
+      'MongoDB Atlas is not reachable from this IP. Add 223.233.85.23 to Network Access, then wait — the API will retry.'
+    );
+    let retrying = false;
+    const retry = setInterval(async () => {
+      if (retrying) return;
+      retrying = true;
+      try {
+        await bootDb();
+        clearInterval(retry);
+        console.log('MongoDB connected after retry');
+      } catch (err) {
+        console.error('DB retry failed:', err.message);
+      } finally {
+        retrying = false;
+      }
+    }, 15000);
   }
   app.listen(config.port, () => {
     console.log(`Express server running on port ${config.port} (${config.appEnv})`);

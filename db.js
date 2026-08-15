@@ -2,21 +2,31 @@ const mongoose = require('mongoose');
 const { GridFSBucket } = require('mongodb');
 const config = require('./config');
 
-let connected = false;
+let connecting = null;
 
 async function connectDb() {
   if (!config.mongodbUri) {
     console.warn('MONGODB_URI not set; DB features will fail until configured');
     return null;
   }
-  if (connected) return mongoose.connection.db;
+  if (mongoose.connection.readyState === 1) return mongoose.connection.db;
+  if (connecting) return connecting;
+
   mongoose.set('strictQuery', true);
-  await mongoose.connect(config.mongodbUri, {
-    dbName: config.mongodbDbName,
-  });
-  connected = true;
-  console.log('MongoDB Connected');
-  return mongoose.connection.db;
+  connecting = mongoose
+    .connect(config.mongodbUri, {
+      dbName: config.mongodbDbName,
+      family: 4,
+      serverSelectionTimeoutMS: 15000,
+    })
+    .then(() => {
+      console.log('MongoDB Connected');
+      return mongoose.connection.db;
+    })
+    .finally(() => {
+      connecting = null;
+    });
+  return connecting;
 }
 
 function getDb() {
@@ -27,9 +37,12 @@ function getDb() {
 function requireDb() {
   const db = getDb();
   if (!db) {
-    const err = new Error('Database unavailable. Set MONGODB_URI.');
+    const message = config.mongodbUri
+      ? 'Database unavailable. MongoDB is not connected — check Atlas Network Access (IP whitelist).'
+      : 'Database unavailable. Set MONGODB_URI.';
+    const err = new Error(message);
     err.status = 503;
-    err.body = { success: false, message: err.message };
+    err.body = { success: false, message };
     throw err;
   }
   return db;
@@ -78,6 +91,10 @@ async function ensureIndexes() {
     await db.collection('events').createIndex({ id: 1 }, { unique: true });
     await db.collection('event_registrations').createIndex({ eventId: 1, email: 1 }, { unique: true });
     await db.collection('event_communications').createIndex({ eventId: 1, createdAt: -1 });
+    await db.collection('installment_plans').createIndex({ id: 1 }, { unique: true });
+    await db.collection('installment_plans').createIndex({ customerEmail: 1, eventId: 1, status: 1 });
+    await db.collection('installment_plans').createIndex({ status: 1, 'installments.dueAt': 1 });
+    await db.collection('notifications').createIndex({ email: 1, createdAt: -1 });
     await db.collection('brochures').createIndex({ id: 1 }, { unique: true });
     await db.collection('payments').createIndex({ id: 1 }, { unique: true });
     await db.collection('payments').createIndex({ razorpayOrderId: 1 }, { unique: true, sparse: true });

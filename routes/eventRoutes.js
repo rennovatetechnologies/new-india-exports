@@ -3,13 +3,15 @@ const { requireDb } = require('../db');
 const { requireAdmin, requireRoles, protect, optionalAuth } = require('../middleware/auth');
 const { validateBody } = require('../middleware/validate');
 const { asyncHandler } = require('../utils/asyncHandler');
-const { utcnow, cleanDoc, normalizeEmail } = require('../services/helpers');
+const { utcnow, cleanDoc, normalizeEmail, isEventExpired } = require('../services/helpers');
 const { newEventId } = require('../services/ids');
-const { uploadEventImage, uploadDoc } = require('../utils/uploads');
+const { uploadEventImage, uploadBrochure, optionalFile } = require('../utils/uploads');
 const drive = require('../services/drive');
 const { actorFromReq, writeAudit } = require('../services/audit');
 const { enqueueEmail } = require('../services/mail');
 const config = require('../config');
+const installments = require('../services/installments');
+const { clampDiscount, effectivePrice } = require('../services/gst');
 const {
   eventUpsertSchema,
   eventUpdateSchema,
@@ -21,19 +23,71 @@ const {
 
 const router = express.Router();
 
+function toIsoDate(raw) {
+  const s = String(raw || '').trim();
+  if (!s) return '';
+  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
+  const d = new Date(s);
+  if (!Number.isNaN(d.getTime())) return d.toISOString().slice(0, 10);
+  return s;
+}
+
+function eventDatesFrom(source = {}, fallback = {}) {
+  const startDate =
+    toIsoDate(source.startDate || source.date || fallback.startDate || fallback.date) || '';
+  let endDate = toIsoDate(source.endDate || fallback.endDate) || '';
+  if (!endDate) endDate = startDate;
+  if (startDate && endDate && endDate < startDate) endDate = startDate;
+  return { startDate, endDate, date: startDate };
+}
+
+function eventPricingFrom(source = {}, fallback = {}) {
+  const priceInr = Math.max(
+    0,
+    Math.round(Number(source.priceInr ?? source.price ?? fallback.priceInr ?? fallback.price ?? 0) || 0)
+  );
+  const discountPercent = clampDiscount(
+    source.discountPercent ?? fallback.discountPercent ?? 0
+  );
+  return {
+    priceInr,
+    discountPercent,
+    effectivePrice: effectivePrice(priceInr, discountPercent),
+  };
+}
+
 function publicEvent(e) {
   if (!e || e.deletedAt) return null;
-  const priceInr = Math.round(Number(e.priceInr ?? e.price ?? 0) || 0);
+  const dates = eventDatesFrom(e);
+  const pricing = eventPricingFrom(e);
+  const installmentPreview = installments.previewForPrice(pricing.effectivePrice);
   return {
     id: e.id,
     title: e.title,
-    date: e.date || '',
+    date: dates.date,
+    startDate: dates.startDate,
+    endDate: dates.endDate,
     city: e.city || '',
     img: e.img || '/event.png',
     seats: e.seats || '',
     capacity: e.capacity || e.seats || '',
     desc: e.desc || '',
-    priceInr,
+    priceInr: pricing.priceInr,
+    discountPercent: pricing.discountPercent,
+    effectivePrice: pricing.effectivePrice,
+    payableTotalInr: installmentPreview.payableTotalInr,
+    installmentEligible: installmentPreview.eligible,
+    installmentOptions: installmentPreview.eligible
+      ? {
+          thresholdInr: installmentPreview.thresholdInr,
+          count: installmentPreview.count,
+          gapDays: installmentPreview.gapDays,
+          windowDays: installmentPreview.windowDays,
+          parts: installmentPreview.parts,
+        }
+      : null,
+    createdAt: e.createdAt || null,
+    expired: isEventExpired(e),
   };
 }
 
@@ -47,6 +101,9 @@ function publicRegistration(r) {
     company: r.company || '',
     status: r.status || 'registered',
     paymentId: r.paymentId || null,
+    installmentPlanId: r.installmentPlanId || null,
+    paidInstallments: r.paidInstallments || null,
+    installmentCount: r.installmentCount || null,
     at: r.createdAt || r.updatedAt || null,
     createdAt: r.createdAt || null,
     updatedAt: r.updatedAt || null,
@@ -60,7 +117,18 @@ function notifyTemplateForKind(kind) {
 }
 
 function eventFieldsChanged(prev, next) {
-  const keys = ['title', 'date', 'city', 'desc', 'priceInr', 'capacity', 'seats'];
+  const keys = [
+    'title',
+    'date',
+    'startDate',
+    'endDate',
+    'city',
+    'desc',
+    'priceInr',
+    'discountPercent',
+    'capacity',
+    'seats',
+  ];
   for (const k of keys) {
     const a = prev?.[k] == null ? '' : String(prev[k]);
     const b = next?.[k] == null ? '' : String(next[k]);
@@ -74,8 +142,16 @@ function buildUpdateMessage(prev, next) {
   if (String(prev.title || '') !== String(next.title || '')) {
     lines.push(`• Title: ${prev.title || '—'} → ${next.title || '—'}`);
   }
-  if (String(prev.date || '') !== String(next.date || '')) {
-    lines.push(`• Date: ${prev.date || '—'} → ${next.date || '—'}`);
+  const prevStart = prev.startDate || prev.date || '';
+  const nextStart = next.startDate || next.date || '';
+  const prevEnd = prev.endDate || prevStart;
+  const nextEnd = next.endDate || nextStart;
+  if (String(prevStart) !== String(nextStart) || String(prevEnd) !== String(nextEnd)) {
+    const prevRange =
+      prevEnd && prevEnd !== prevStart ? `${prevStart || '—'} – ${prevEnd}` : prevStart || '—';
+    const nextRange =
+      nextEnd && nextEnd !== nextStart ? `${nextStart || '—'} – ${nextEnd}` : nextStart || '—';
+    lines.push(`• Dates: ${prevRange} → ${nextRange}`);
   }
   if (String(prev.city || '') !== String(next.city || '')) {
     lines.push(`• City: ${prev.city || '—'} → ${next.city || '—'}`);
@@ -83,10 +159,13 @@ function buildUpdateMessage(prev, next) {
   if (String(prev.desc || '') !== String(next.desc || '')) {
     lines.push('• Description was updated.');
   }
-  const prevPrice = Math.round(Number(prev.priceInr ?? 0) || 0);
-  const nextPrice = Math.round(Number(next.priceInr ?? 0) || 0);
-  if (prevPrice !== nextPrice) {
-    lines.push(`• Price: ₹${prevPrice} → ₹${nextPrice}`);
+  const prevPay = eventPricingFrom(prev);
+  const nextPay = eventPricingFrom(next);
+  if (prevPay.priceInr !== nextPay.priceInr || prevPay.discountPercent !== nextPay.discountPercent) {
+    lines.push(
+      `• Price: ₹${prevPay.effectivePrice} → ₹${nextPay.effectivePrice}` +
+        (nextPay.discountPercent > 0 ? ` (${nextPay.discountPercent}% off list ₹${nextPay.priceInr})` : '')
+    );
   }
   if (lines.length === 1) lines.push('• Event details were refreshed.');
   return lines.join('\n');
@@ -176,9 +255,11 @@ async function sendEventNotifications({
         vars: {
           name: r.name || '',
           title: event.title,
-          date: event.date || '',
+          date: event.startDate || event.date || '',
+          startDate: event.startDate || event.date || '',
+          endDate: event.endDate || event.startDate || event.date || '',
           city: event.city || '',
-          newDate: newDate || event.date || '',
+          newDate: newDate || event.startDate || event.date || '',
           newCity: newCity || event.city || '',
           message: msg,
           kind,
@@ -233,15 +314,27 @@ async function sendEventNotifications({
   };
 }
 
+function isStaffUser(user) {
+  const role = user?.role;
+  return role === 'admin' || role === 'operations' || role === 'super';
+}
+
 router.get(
   '/events',
+  optionalAuth,
   asyncHandler(async (req, res) => {
     const db = requireDb();
     const rows = await db
       .collection('events')
       .find({ $or: [{ deletedAt: null }, { deletedAt: { $exists: false } }] })
+      .sort({ createdAt: -1 })
       .toArray();
-    return res.json(rows.map(publicEvent).filter(Boolean));
+    const includeExpired = isStaffUser(req.user);
+    const mapped = rows
+      .map(publicEvent)
+      .filter(Boolean)
+      .filter((e) => includeExpired || !e.expired);
+    return res.json(mapped);
   })
 );
 
@@ -251,22 +344,27 @@ router.post(
   validateBody(eventUpsertSchema),
   asyncHandler(async (req, res) => {
     const db = requireDb();
-    const id = req.body.id || (await newEventId());
+    const id = await newEventId();
+    const dates = eventDatesFrom(req.body);
+    const pricing = eventPricingFrom(req.body);
     const doc = {
       id,
       title: req.body.title,
-      date: req.body.date || '',
+      date: dates.date,
+      startDate: dates.startDate,
+      endDate: dates.endDate,
       city: req.body.city || '',
       img: req.body.img || '/event.png',
       seats: req.body.seats || '',
       capacity: req.body.capacity || req.body.seats || '',
       desc: req.body.desc || '',
-      priceInr: Math.round(Number(req.body.priceInr ?? req.body.price ?? 0) || 0),
+      priceInr: pricing.priceInr,
+      discountPercent: pricing.discountPercent,
       deletedAt: null,
       updatedAt: utcnow(),
       createdAt: utcnow(),
     };
-    await db.collection('events').updateOne({ id }, { $set: doc }, { upsert: true });
+    await db.collection('events').insertOne(doc);
     await writeAudit(actorFromReq(req), 'event.upserted', {
       resource: { type: 'event', id },
       meta: { title: doc.title },
@@ -284,10 +382,14 @@ router.put(
     const id = req.params.eventId;
     const prev = await db.collection('events').findOne({ id });
     if (!prev) return res.status(404).json({ success: false, message: 'Not found' });
+    const dates = eventDatesFrom(req.body, prev);
+    const pricing = eventPricingFrom(req.body, prev);
     const doc = {
       id,
       title: req.body.title != null ? req.body.title : prev.title,
-      date: req.body.date != null ? req.body.date : prev.date,
+      date: dates.date,
+      startDate: dates.startDate,
+      endDate: dates.endDate,
       city: req.body.city != null ? req.body.city : prev.city,
       img: req.body.img != null ? req.body.img : prev.img,
       seats: req.body.seats != null ? req.body.seats : prev.seats,
@@ -298,9 +400,8 @@ router.put(
             ? req.body.seats
             : prev.capacity || prev.seats,
       desc: req.body.desc != null ? req.body.desc : prev.desc,
-      priceInr: Math.round(
-        Number(req.body.priceInr ?? req.body.price ?? prev.priceInr ?? 0) || 0
-      ),
+      priceInr: pricing.priceInr,
+      discountPercent: pricing.discountPercent,
       deletedAt: prev.deletedAt || null,
       createdAt: prev.createdAt || utcnow(),
       updatedAt: utcnow(),
@@ -314,7 +415,9 @@ router.put(
 
     let notified = null;
     if (eventFieldsChanged(prev, doc)) {
-      const dateChanged = String(prev.date || '') !== String(doc.date || '');
+      const dateChanged =
+        String(prev.startDate || prev.date || '') !== String(doc.startDate || doc.date || '') ||
+        String(prev.endDate || '') !== String(doc.endDate || '');
       const cityChanged = String(prev.city || '') !== String(doc.city || '');
       const kind = dateChanged || cityChanged ? 'reschedule' : 'update';
       try {
@@ -389,15 +492,26 @@ router.post(
   asyncHandler(async (req, res) => {
     const db = requireDb();
     const event = await db.collection('events').findOne({ id: req.params.id });
-    if (!event) return res.status(404).json({ success: false, message: 'Event not found' });
+    if (!event || event.deletedAt) {
+      return res.status(404).json({ success: false, message: 'Event not found' });
+    }
+    if (isEventExpired(event)) {
+      return res.status(410).json({
+        success: false,
+        code: 'EVENT_EXPIRED',
+        message: 'This event has ended',
+      });
+    }
     const email = normalizeEmail(req.user.email);
-    const priceInr = Math.round(Number(event.priceInr ?? 0) || 0);
-    if (priceInr > 0) {
+    const pricing = eventPricingFrom(event);
+    if (pricing.effectivePrice > 0) {
       return res.status(402).json({
         success: false,
         code: 'PAYMENT_REQUIRED',
         message: 'Pay via /api/create-order with purpose=event before registering',
-        priceInr,
+        priceInr: pricing.effectivePrice,
+        listPriceInr: pricing.priceInr,
+        discountPercent: pricing.discountPercent,
       });
     }
     await db.collection('event_registrations').updateOne(
@@ -421,7 +535,9 @@ router.post(
         template: 'event.registered',
         vars: {
           title: event.title,
-          date: event.date || '',
+          date: event.startDate || event.date || '',
+          startDate: event.startDate || event.date || '',
+          endDate: event.endDate || event.startDate || event.date || '',
           city: event.city || '',
           name: req.user.name || '',
         },
@@ -442,6 +558,18 @@ router.delete(
   asyncHandler(async (req, res) => {
     const db = requireDb();
     const email = normalizeEmail(req.user.email);
+    try {
+      await installments.cancelOpenPlan({
+        eventId: req.params.id,
+        email,
+        actor: actorFromReq(req),
+      });
+    } catch (e) {
+      if (e.status) {
+        return res.status(e.status).json({ success: false, message: e.message });
+      }
+      throw e;
+    }
     await db.collection('event_registrations').deleteOne({ eventId: req.params.id, email });
     try {
       const event = await db.collection('events').findOne({ id: req.params.id });
@@ -555,7 +683,11 @@ router.post(
 
     if (kind === 'reschedule' && (newDate || newCity)) {
       const updates = { updatedAt: utcnow() };
-      if (newDate) updates.date = newDate;
+      if (newDate) {
+        updates.date = newDate;
+        updates.startDate = newDate;
+        if (!event.endDate || event.endDate < newDate) updates.endDate = newDate;
+      }
       if (newCity) updates.city = newCity;
       await db.collection('events').updateOne({ id: event.id }, { $set: updates });
       if (newDate) event.date = newDate;
@@ -617,6 +749,82 @@ router.get(
   })
 );
 
+function normalizeBrochureKind(raw, fallback = 'pdf') {
+  const v = raw != null && raw !== '' ? raw : fallback;
+  return v === 'gallery' ? 'gallery' : 'pdf';
+}
+
+function brochureFilePath(id) {
+  return `/api/brochures/${encodeURIComponent(id)}/file`;
+}
+
+function publicBrochure(b) {
+  if (!b || b.deletedAt) return null;
+  const kind = normalizeBrochureKind(b.kind);
+  const hasFile = Boolean(b.fileId || b.driveFileId);
+  const stored = String(b.fileUrl || b.path || '').trim();
+  const path = hasFile ? brochureFilePath(b.id) : stored;
+  const name = String(b.name || b.title || 'Brochure').trim();
+  return {
+    id: b.id,
+    name,
+    title: name,
+    kind,
+    path: path || undefined,
+    fileUrl: path || null,
+    hasFile,
+    hasBlob: false,
+    fileName: b.fileName || null,
+    fileType: b.fileType || null,
+    fileSize: b.fileSize || null,
+    showInNav: kind === 'pdf' ? b.showInNav !== false : false,
+    sortOrder: Number.isFinite(Number(b.sortOrder)) ? Number(b.sortOrder) : 0,
+    createdAt: b.createdAt || null,
+    updatedAt: b.updatedAt || null,
+  };
+}
+
+async function uploadBrochureFile(file, brochureId) {
+  const folderId = await drive.ensureBrochureFolder();
+  const uploaded = await drive.upload({
+    folderId,
+    buffer: file.buffer,
+    fileName: file.originalname,
+    mimeType: file.mimetype,
+    appProperties: { kind: 'brochure', brochureId },
+  });
+  const publicPath = brochureFilePath(brochureId);
+  return {
+    fileId: uploaded.fileId,
+    driveFileId: uploaded.driveFileId,
+    fileUrl: publicPath,
+    fileName: file.originalname || '',
+    fileType: file.mimetype || '',
+    fileSize: file.size || 0,
+    path: publicPath,
+  };
+}
+
+function brochureMetaFrom(body = {}, prev = {}) {
+  const kind = normalizeBrochureKind(body.kind, prev.kind);
+  const name = String(body.name || body.title || prev.name || prev.title || 'Brochure').trim();
+  let showInNav = prev.showInNav;
+  if (body.showInNav !== undefined) showInNav = body.showInNav;
+  if (kind !== 'pdf') showInNav = false;
+  else if (showInNav === undefined) showInNav = true;
+  const sortRaw = body.sortOrder != null ? Number(body.sortOrder) : Number(prev.sortOrder);
+  return {
+    name,
+    title: name,
+    kind,
+    description: body.description != null ? String(body.description) : prev.description || '',
+    category: body.category != null ? String(body.category) : prev.category || '',
+    showInNav: Boolean(showInNav),
+    sortOrder: Number.isFinite(sortRaw) ? sortRaw : 0,
+    path: body.path != null ? String(body.path) : prev.path || '',
+  };
+}
+
 // Brochures
 router.get(
   '/brochures',
@@ -625,12 +833,13 @@ router.get(
     const rows = await db
       .collection('brochures')
       .find({ $or: [{ deletedAt: null }, { deletedAt: { $exists: false } }] })
-      .sort({ createdAt: -1 })
+      .sort({ sortOrder: 1, createdAt: -1 })
       .toArray();
+    const items = rows.map(publicBrochure).filter(Boolean);
     return res.json({
       success: true,
-      data: rows.map(cleanDoc),
-      items: rows.map(cleanDoc),
+      data: items,
+      items,
     });
   })
 );
@@ -638,33 +847,26 @@ router.get(
 router.post(
   '/brochures',
   requireRoles('admin', 'operations'),
-  uploadDoc.single('file'),
+  optionalFile(uploadBrochure),
   validateBody(brochureUpsertSchema),
   asyncHandler(async (req, res) => {
     const db = requireDb();
     const id = req.body.id || `BR-${Date.now().toString(36).toUpperCase()}`;
-    let fileId = null;
-    let driveFileId = null;
+    const meta = brochureMetaFrom(req.body);
+    let fileFields = {};
     if (req.file) {
-      const folderId = await drive.ensureBrochureFolder();
-      const uploaded = await drive.upload({
-        folderId,
-        buffer: req.file.buffer,
-        fileName: req.file.originalname,
-        mimeType: req.file.mimetype,
-        appProperties: { kind: 'brochure', brochureId: id },
-      });
-      fileId = uploaded.fileId;
-      driveFileId = uploaded.driveFileId;
+      fileFields = await uploadBrochureFile(req.file, id);
     }
     const doc = {
       id,
-      title: req.body.title || 'Brochure',
-      description: req.body.description || '',
-      category: req.body.category || '',
-      fileId,
-      driveFileId,
-      fileUrl: fileId ? `/api/files/${fileId}/download` : null,
+      ...meta,
+      fileId: fileFields.fileId || null,
+      driveFileId: fileFields.driveFileId || null,
+      fileUrl: fileFields.fileUrl || (meta.path || null),
+      fileName: fileFields.fileName || null,
+      fileType: fileFields.fileType || null,
+      fileSize: fileFields.fileSize || null,
+      path: fileFields.path || meta.path || '',
       createdAt: utcnow(),
       updatedAt: utcnow(),
       deletedAt: null,
@@ -673,25 +875,32 @@ router.post(
     await writeAudit(actorFromReq(req), 'brochure.created', {
       resource: { type: 'brochure', id },
     });
-    return res.json({ success: true, data: cleanDoc(doc) });
+    return res.json({ success: true, data: publicBrochure(doc) });
   })
 );
 
 router.put(
   '/brochures/:id',
   requireRoles('admin', 'operations'),
+  optionalFile(uploadBrochure),
   validateBody(brochureUpdateSchema),
   asyncHandler(async (req, res) => {
     const db = requireDb();
     const id = req.params.id;
-    const updates = { updatedAt: utcnow() };
-    if (req.body.title != null) updates.title = req.body.title;
-    if (req.body.description != null) updates.description = req.body.description;
-    if (req.body.category != null) updates.category = req.body.category;
-    if (req.body.fileUrl != null) updates.fileUrl = req.body.fileUrl;
+    const prev = await db.collection('brochures').findOne({ id });
+    if (!prev || prev.deletedAt) {
+      return res.status(404).json({ success: false, message: 'Not found' });
+    }
+    const meta = brochureMetaFrom(req.body, prev);
+    const updates = { ...meta, updatedAt: utcnow() };
+    if (req.file) {
+      Object.assign(updates, await uploadBrochureFile(req.file, id));
+    } else if (req.body.fileUrl != null) {
+      updates.fileUrl = req.body.fileUrl;
+    }
     await db.collection('brochures').updateOne({ id }, { $set: updates });
     const doc = await db.collection('brochures').findOne({ id });
-    return res.json({ success: true, data: cleanDoc(doc) });
+    return res.json({ success: true, data: publicBrochure(doc) });
   })
 );
 
@@ -713,12 +922,14 @@ router.get(
   asyncHandler(async (req, res) => {
     const db = requireDb();
     const doc = await db.collection('brochures').findOne({ id: req.params.id });
-    if (!doc?.fileId && !doc?.driveFileId) {
+    if (!doc || doc.deletedAt || (!doc.fileId && !doc.driveFileId)) {
       return res.status(404).json({ success: false, message: 'No file' });
     }
     const { stream, mimeType, fileName } = await drive.downloadStream(doc.fileId || doc.driveFileId);
-    res.setHeader('Content-Type', mimeType || 'application/pdf');
-    res.setHeader('Content-Disposition', `inline; filename="${fileName || 'brochure.pdf'}"`);
+    const safeName = String(fileName || doc.fileName || 'brochure').replace(/"/g, '');
+    res.setHeader('Content-Type', mimeType || doc.fileType || 'application/pdf');
+    res.setHeader('Content-Disposition', `inline; filename="${safeName}"`);
+    res.setHeader('Cache-Control', 'public, max-age=300');
     stream.pipe(res);
   })
 );

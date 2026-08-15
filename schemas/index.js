@@ -34,14 +34,21 @@ const staffPermissionsSchema = z.object({
   permissions: z.array(z.string().trim().max(80)),
 });
 
+const marketingFeatureSchema = z.object({
+  label: z.string().trim().min(1).max(300),
+  included: z.boolean().optional().default(true),
+});
+
 const planCreateSchema = z.object({
   id: nonEmptyString(1, 80),
   name: optionalString(120),
   price: z.coerce.number().min(0).optional().default(0),
   discountPercent: z.coerce.number().min(0).max(100).optional().default(0),
   tagline: optionalString(300),
+  timeline: optionalString(120),
   featured: z.boolean().optional().default(false),
   features: z.array(z.string().trim().max(300)).optional().default([]),
+  marketingFeatures: z.array(marketingFeatureSchema).optional().default([]),
   kycDocs: z.array(z.record(z.string(), z.any())).optional().default([]),
   workflowStages: z.array(z.any()).optional().default([]),
 });
@@ -51,8 +58,10 @@ const planUpdateSchema = z.object({
   price: z.coerce.number().min(0).optional(),
   discountPercent: z.coerce.number().min(0).max(100).optional(),
   tagline: optionalString(300),
+  timeline: optionalString(120),
   featured: z.boolean().optional(),
   features: z.array(z.string().trim().max(300)).optional(),
+  marketingFeatures: z.array(marketingFeatureSchema).optional(),
   kycDocs: z.array(z.record(z.string(), z.any())).optional(),
   workflowStages: z.array(z.any()).optional(),
 });
@@ -66,6 +75,9 @@ const createOrderSchema = z.object({
   currency: z.string().trim().max(8).optional(),
   description: optionalString(300),
   notes: z.record(z.string(), z.any()).optional(),
+  payInInstallments: z.boolean().optional(),
+  installmentPlanId: optionalString(80),
+  installmentNumber: z.coerce.number().int().min(1).max(12).optional(),
 }).passthrough();
 
 const verifyPaymentSchema = z.object({
@@ -221,37 +233,66 @@ const kycDocReviewSchema = z.object({
   note: optionalString(1000),
 });
 
+/** Seat/capacity fields are numbers in the UI and strings in some stored docs. */
+const optionalSeatValue = z.preprocess(
+  (v) => (v == null || v === '' ? undefined : String(v)),
+  z
+    .string()
+    .trim()
+    .max(40)
+    .optional()
+    .transform((v) => (v == null || v === '' ? undefined : v))
+);
+
 const eventUpsertSchema = z.object({
   id: optionalString(80),
   title: nonEmptyString(2, 200),
   date: optionalString(80),
+  startDate: optionalString(80),
+  endDate: optionalString(80),
   city: optionalString(120),
   img: optionalString(500),
-  seats: optionalString(40),
-  capacity: optionalString(40),
+  seats: optionalSeatValue,
+  capacity: optionalSeatValue,
   desc: optionalString(2000),
   priceInr: z.coerce.number().min(0).optional(),
   price: z.coerce.number().min(0).optional(),
+  discountPercent: z.coerce.number().min(0).max(100).optional().default(0),
 });
 
 const eventUpdateSchema = z.object({
   title: optionalString(200),
   date: optionalString(80),
+  startDate: optionalString(80),
+  endDate: optionalString(80),
   city: optionalString(120),
   img: optionalString(500),
-  seats: optionalString(40),
-  capacity: optionalString(40),
+  seats: optionalSeatValue,
+  capacity: optionalSeatValue,
   desc: optionalString(2000),
   priceInr: z.coerce.number().min(0).optional(),
   price: z.coerce.number().min(0).optional(),
+  discountPercent: z.coerce.number().min(0).max(100).optional(),
 });
+
+const formBoolOptional = z.preprocess((v) => {
+  if (v === undefined || v === null || v === '') return undefined;
+  if (typeof v === 'boolean') return v;
+  const s = String(v).toLowerCase();
+  return s === 'true' || s === '1' || s === 'on';
+}, z.boolean().optional());
 
 const brochureUpsertSchema = z.object({
   id: optionalString(80),
   title: optionalString(200),
+  name: optionalString(200),
   description: optionalString(2000),
   category: optionalString(120),
+  kind: z.enum(['pdf', 'gallery']).optional(),
+  path: optionalString(500),
   fileUrl: optionalString(500),
+  showInNav: formBoolOptional,
+  sortOrder: z.coerce.number().optional(),
 }).passthrough();
 
 const profileUpdateSchema = z.object({
@@ -290,10 +331,15 @@ const docRequestSchema = z.object({
 
 const brochureUpdateSchema = z.object({
   title: optionalString(200),
+  name: optionalString(200),
   description: optionalString(2000),
   category: optionalString(120),
+  kind: z.enum(['pdf', 'gallery']).optional(),
+  path: optionalString(500),
   fileUrl: optionalString(500),
-});
+  showInNav: formBoolOptional,
+  sortOrder: z.coerce.number().optional(),
+}).passthrough();
 
 const emailOutboxRetrySchema = z.object({
   limit: z.coerce.number().int().min(1).max(100).optional().default(20),

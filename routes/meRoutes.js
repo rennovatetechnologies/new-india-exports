@@ -243,6 +243,10 @@ router.get(
       rows.map((r) => ({
         id: String(r._id),
         title: r.title,
+        body: r.body || '',
+        type: r.type || '',
+        kind: r.kind || '',
+        href: r.href || '/dashboard/events',
         read: Boolean(r.read),
         createdAt: r.createdAt,
       }))

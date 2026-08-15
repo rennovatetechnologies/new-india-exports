@@ -2,13 +2,14 @@ const crypto = require('crypto');
 const Razorpay = require('razorpay');
 const config = require('../../config');
 const { requireDb, getDb } = require('../../db');
-const { utcnow, normalizeEmail } = require('../helpers');
+const { utcnow, normalizeEmail, isEventExpired } = require('../helpers');
 const { newPaymentId } = require('../ids');
 const { effectivePrice, computeGst, fromInclusiveTotal, inrToPaise } = require('../gst');
 const { writeAudit } = require('../audit');
 const { enqueueEmail } = require('../mail');
 const { issueInvoiceForPayment } = require('../invoices');
 const cases = require('../cases');
+const installments = require('../installments');
 
 function getRazorpayClient() {
   if (!config.razorpayKeyId || !config.razorpayKeySecret || config.razorpayKeyId === 'YOUR_KEY_ID') {
@@ -144,7 +145,18 @@ async function resolvePricing(body, user) {
 
   if (eventId || purpose === 'event') {
     const event = db ? await db.collection('events').findOne({ id: eventId || body.sku }) : null;
-    const priceInr = Math.round(Number(event?.priceInr ?? event?.price ?? 0) || 0);
+    if (!event || event.deletedAt) {
+      throw Object.assign(new Error('Event not found'), { status: 404 });
+    }
+    if (isEventExpired(event) && !body.installmentPlanId) {
+      throw Object.assign(new Error('This event has ended'), {
+        status: 410,
+        code: 'EVENT_EXPIRED',
+      });
+    }
+    const listPrice = Math.round(Number(event?.priceInr ?? event?.price ?? 0) || 0);
+    const discountPercent = event?.discountPercent ?? 0;
+    const priceInr = effectivePrice(listPrice, discountPercent);
     if (priceInr <= 0) {
       return {
         purpose: 'event',
@@ -196,6 +208,19 @@ async function createOrder(body, user, { actor } = {}) {
   if (pricing.free) {
     return { free: true, pricing };
   }
+
+  let installmentCtx = null;
+  installmentCtx = await installments.prepareForOrder({ pricing, body, user });
+  if (installmentCtx) {
+    const { plan, installment } = installmentCtx;
+    pricing.amounts = installment.amounts;
+    pricing.description = `${pricing.description} · installment ${installment.number} of ${plan.installmentCount}`;
+    pricing.installmentPlanId = plan.id;
+    pricing.installmentNumber = installment.number;
+    pricing.installmentCount = plan.installmentCount;
+    pricing.installmentDueAt = installment.dueAt;
+  }
+
   const paise = inrToPaise(pricing.amounts.total);
   if (paise < 100) {
     throw Object.assign(new Error('Order amount too small'), { status: 400 });
@@ -212,6 +237,8 @@ async function createOrder(body, user, { actor } = {}) {
       sku: pricing.sku,
       caseId: pricing.caseId || '',
       email: pricing.customerEmail || '',
+      installmentPlanId: pricing.installmentPlanId || '',
+      installmentNumber: String(pricing.installmentNumber || ''),
     },
   });
 
@@ -235,6 +262,9 @@ async function createOrder(body, user, { actor } = {}) {
     description: pricing.description,
     planId: pricing.planId || null,
     eventId: pricing.eventId || null,
+    installmentPlanId: pricing.installmentPlanId || null,
+    installmentNumber: pricing.installmentNumber || null,
+    installmentCount: pricing.installmentCount || null,
     listPrice: pricing.listPrice,
     discountPercent: pricing.discountPercent,
     meta: pricing.meta || {},
@@ -256,6 +286,9 @@ async function createOrder(body, user, { actor } = {}) {
         sku: pricing.sku,
         purpose: pricing.purpose,
         planId: pricing.planId || null,
+        eventId: pricing.eventId || null,
+        installmentPlanId: pricing.installmentPlanId || null,
+        installmentNumber: pricing.installmentNumber || null,
         email: pricing.customerEmail,
         createdAt: utcnow(),
       },
@@ -276,6 +309,15 @@ async function createOrder(body, user, { actor } = {}) {
     id: razorpayOrder.id,
     amount: razorpayOrder.amount,
     currency: 'INR',
+    installment: installmentCtx
+      ? {
+          planId: installmentCtx.plan.id,
+          number: installmentCtx.installment.number,
+          count: installmentCtx.plan.installmentCount,
+          dueAt: installmentCtx.installment.dueAt,
+          amounts: installmentCtx.installment.amounts,
+        }
+      : null,
   };
 }
 
@@ -350,21 +392,39 @@ async function applySideEffects(payment, { actor } = {}) {
   }
 
   if (payment.purpose === 'event' && payment.eventId) {
-    await db.collection('event_registrations').updateOne(
-      { eventId: payment.eventId, email },
-      {
-        $set: {
-          eventId: payment.eventId,
-          email,
-          name: payment.customerName,
-          paymentId: payment.id,
-          status: 'registered',
-          updatedAt: utcnow(),
+    if (payment.installmentPlanId) {
+      await installments.markInstallmentPaid(payment, { actor });
+    } else {
+      await db.collection('event_registrations').updateOne(
+        { eventId: payment.eventId, email },
+        {
+          $set: {
+            eventId: payment.eventId,
+            email,
+            name: payment.customerName,
+            paymentId: payment.id,
+            status: 'registered',
+            updatedAt: utcnow(),
+          },
+          $setOnInsert: { createdAt: utcnow() },
         },
-        $setOnInsert: { createdAt: utcnow() },
-      },
-      { upsert: true }
-    );
+        { upsert: true }
+      );
+      try {
+        const event = await db.collection('events').findOne({ id: payment.eventId });
+        await enqueueEmail({
+          to: email,
+          template: 'event.registered',
+          vars: {
+            name: payment.customerName || '',
+            title: event?.title || payment.description,
+            date: event?.date || '',
+            city: event?.city || '',
+          },
+          actor,
+        });
+      } catch (_) {}
+    }
   }
 
   if (payment.purpose === 'booking') {
@@ -437,6 +497,9 @@ async function capturePayment({
       currency: 'INR',
       description: order?.description || 'Payment',
       planId: order?.planId || null,
+      eventId: order?.eventId || null,
+      installmentPlanId: order?.installmentPlanId || null,
+      installmentNumber: order?.installmentNumber ? Number(order.installmentNumber) : null,
       createdAt: utcnow(),
       updatedAt: utcnow(),
       paidAt: utcnow(),

@@ -4,6 +4,7 @@ const { getDb, requireDb } = require('../../db');
 const { utcnow } = require('../helpers');
 const { writeAudit } = require('../audit');
 const { renderTemplate } = require('./templates');
+const { logoInlineAttachment } = require('../../assets');
 
 let transporter = null;
 
@@ -141,6 +142,8 @@ async function sendOutbox(outboxId, attachments = [], actor) {
   }
 
   try {
+    const logo = logoInlineAttachment();
+    const mailAttachments = logo ? [logo, ...(attachments || [])] : attachments;
     const info = await tx.sendMail({
       from: config.mailFrom,
       to: doc.to.join(', '),
@@ -149,7 +152,7 @@ async function sendOutbox(outboxId, attachments = [], actor) {
       subject: doc.subject,
       html: doc.html,
       text: doc.text,
-      attachments,
+      attachments: mailAttachments,
     });
     await db.collection('email_outbox').updateOne(
       { _id },

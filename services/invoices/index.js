@@ -5,6 +5,7 @@ const { utcnow, normalizeEmail } = require('../helpers');
 const { newInvoiceId, newInvoiceNumber } = require('../ids');
 const { writeAudit } = require('../audit');
 const { enqueueEmail } = require('../mail');
+const { getLogoPath, LOGO_ASPECT } = require('../../assets');
 
 function renderInvoicePdf(invoice) {
   return new Promise((resolve, reject) => {
@@ -17,19 +18,34 @@ function renderInvoicePdf(invoice) {
     const seller = invoice.seller || config.seller;
     const amounts = invoice.amounts || {};
     const customer = invoice.customer || {};
+    const margin = 50;
+    const logoPath = getLogoPath();
+    let headerBottom = 50;
 
-    doc.fontSize(16).text(seller.legalName || 'New India Export', { align: 'left' });
-    doc.fontSize(10).fillColor('#444').text(seller.brandName || '');
-    doc.text(`GSTIN: ${seller.gstin || ''}`);
-    (seller.addressLines || []).forEach((line) => doc.text(line));
-    doc.moveDown();
-    doc.fillColor('#000').fontSize(14).text('TAX INVOICE', { align: 'right' });
+    if (logoPath) {
+      const logoW = 200;
+      const logoH = logoW * LOGO_ASPECT;
+      doc.image(logoPath, margin, 40, { width: logoW, height: logoH });
+      headerBottom = 40 + logoH + 12;
+    } else {
+      doc.fontSize(16).fillColor('#000').text(seller.legalName || 'New India Export', margin, 50);
+      if (seller.brandName) doc.fontSize(10).fillColor('#444').text(seller.brandName);
+      headerBottom = doc.y + 8;
+    }
+
+    doc.fillColor('#000').fontSize(14).text('TAX INVOICE', margin, 42, { align: 'right' });
     doc.fontSize(10).text(`Invoice No: ${invoice.invoiceNumber}`, { align: 'right' });
     doc.text(`Date: ${new Date(invoice.issuedAt || Date.now()).toISOString().slice(0, 10)}`, {
       align: 'right',
     });
+
+    doc.y = Math.max(headerBottom, doc.y + 10);
+    doc.fillColor('#000').fontSize(11).text(seller.legalName || 'New India Export');
+    doc.fontSize(10).fillColor('#444');
+    doc.text(`GSTIN: ${seller.gstin || ''}`);
+    (seller.addressLines || []).forEach((line) => doc.text(line));
     doc.moveDown();
-    doc.fontSize(11).text('Bill To');
+    doc.fillColor('#000').fontSize(11).text('Bill To');
     doc.fontSize(10).text(customer.name || '');
     if (customer.company) doc.text(customer.company);
     if (customer.email) doc.text(customer.email);

@@ -61,6 +61,11 @@ async function newEventId() {
   return `EVT-${pad(seq, 6)}`;
 }
 
+async function newInstallmentPlanId() {
+  const seq = await nextSeq('installment_plan');
+  return `IPL-${pad(seq, 8)}`;
+}
+
 async function newTicketId() {
   const seq = await nextSeq('ticket');
   return `TKT-${pad(seq, 6)}`;
@@ -81,6 +86,7 @@ module.exports = {
   newDocId,
   newFileId,
   newEventId,
+  newInstallmentPlanId,
   newTicketId,
   newStaffRequestId,
 };

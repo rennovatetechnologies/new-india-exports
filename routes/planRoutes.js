@@ -10,6 +10,22 @@ const { planCreateSchema, planUpdateSchema } = require('../schemas');
 
 const router = express.Router();
 
+function publicMarketingFeatures(list) {
+  if (!Array.isArray(list)) return [];
+  return list
+    .map((row) => {
+      if (!row) return null;
+      if (typeof row === 'string') {
+        const label = row.trim();
+        return label ? { label, included: true } : null;
+      }
+      const label = String(row.label || row.text || '').trim();
+      if (!label) return null;
+      return { label, included: row.included !== false };
+    })
+    .filter(Boolean);
+}
+
 function publicPlan(p) {
   if (!p || p.deletedAt) return null;
   const discountPercent = clampDiscount(p.discountPercent);
@@ -20,8 +36,10 @@ function publicPlan(p) {
     discountPercent,
     effectivePrice: effectivePrice(p.price, discountPercent),
     tagline: p.tagline || '',
+    timeline: p.timeline || '',
     featured: Boolean(p.featured),
     features: Array.isArray(p.features) ? p.features : [],
+    marketingFeatures: publicMarketingFeatures(p.marketingFeatures),
     kycDocs: Array.isArray(p.kycDocs) ? p.kycDocs : [],
     workflowStages: Array.isArray(p.workflowStages) ? p.workflowStages : [],
   };
@@ -54,8 +72,10 @@ router.post(
       price: Math.round(Number(req.body.price) || 0),
       discountPercent: clampDiscount(req.body.discountPercent),
       tagline: req.body.tagline || '',
+      timeline: req.body.timeline || '',
       featured: Boolean(req.body.featured),
       features: req.body.features || [],
+      marketingFeatures: publicMarketingFeatures(req.body.marketingFeatures),
       kycDocs: req.body.kycDocs || [],
       workflowStages: req.body.workflowStages || [],
       deletedAt: null,
@@ -90,8 +110,13 @@ router.put(
       price: req.body.price != null ? Math.round(Number(req.body.price) || 0) : prev.price,
       discountPercent,
       tagline: req.body.tagline != null ? req.body.tagline : prev.tagline,
+      timeline: req.body.timeline != null ? req.body.timeline : prev.timeline,
       featured: req.body.featured != null ? Boolean(req.body.featured) : prev.featured,
       features: req.body.features != null ? req.body.features : prev.features,
+      marketingFeatures:
+        req.body.marketingFeatures != null
+          ? publicMarketingFeatures(req.body.marketingFeatures)
+          : publicMarketingFeatures(prev.marketingFeatures),
       kycDocs: req.body.kycDocs != null ? req.body.kycDocs : prev.kycDocs,
       workflowStages:
         req.body.workflowStages != null ? req.body.workflowStages : prev.workflowStages,

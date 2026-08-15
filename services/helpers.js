@@ -59,6 +59,40 @@ function pick(obj, keys) {
   return out;
 }
 
+/** Calendar date in India (YYYY-MM-DD). Events are date-only, not timed. */
+function todayIso(timeZone = 'Asia/Kolkata') {
+  try {
+    return new Date().toLocaleDateString('en-CA', { timeZone });
+  } catch (_) {
+    return new Date().toISOString().slice(0, 10);
+  }
+}
+
+function toIsoDate(raw) {
+  const s = String(raw || '').trim();
+  if (!s) return '';
+  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
+  const d = new Date(s);
+  if (!Number.isNaN(d.getTime())) return d.toISOString().slice(0, 10);
+  return '';
+}
+
+function eventEndIso(event) {
+  return (
+    toIsoDate(event?.endDate) ||
+    toIsoDate(event?.startDate) ||
+    toIsoDate(event?.date) ||
+    ''
+  );
+}
+
+/** True when the event's last day is before today (India calendar). Undated events stay active. */
+function isEventExpired(event, today = todayIso()) {
+  const end = eventEndIso(event);
+  if (!end) return false;
+  return end < today;
+}
+
 module.exports = {
   utcnow,
   normalizeEmail,
@@ -69,4 +103,8 @@ module.exports = {
   requestId,
   safeCustomerKey,
   pick,
+  todayIso,
+  toIsoDate,
+  eventEndIso,
+  isEventExpired,
 };

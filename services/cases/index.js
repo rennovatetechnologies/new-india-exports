@@ -9,6 +9,7 @@ const CASE_STATUS = {
   KYC_INCOMPLETE: 'kyc_incomplete',
   KYC_PENDING: 'kyc_pending',
   ACTIVE: 'active',
+  COMPLETED: 'completed',
   EXPIRED: 'expired',
   CLOSED: 'closed',
 };
@@ -117,36 +118,55 @@ async function buildWorkflowStagesForCase(caseDoc) {
   return stages;
 }
 
+/** True when every snapshotted workflow stage has been marked complete. */
+function isWorkflowComplete(c) {
+  const stages = Array.isArray(c?.workflowStages) ? c.workflowStages : [];
+  if (!stages.length) return false;
+  return Math.max(0, Number(c.stageIndex || 0)) >= stages.length;
+}
+
 /**
  * Ensure case responses always include workflowStages.
  * Snapshots missing stages into Mongo so every instance / role sees the same list.
  */
 async function withWorkflowStages(doc) {
   if (!doc) return null;
-  const pub = publicCase(doc);
-  if (Array.isArray(pub.workflowStages) && pub.workflowStages.length) {
-    return {
-      ...pub,
-      workflowStages: pub.workflowStages.map(normalizeStage).filter(Boolean),
-    };
+  let stages = Array.isArray(doc.workflowStages) ? doc.workflowStages.map(normalizeStage).filter(Boolean) : [];
+  if (!stages.length && (doc.paidPlanId || doc.planId)) {
+    stages = await buildWorkflowStagesForCase(doc);
+    if (stages.length && doc.id) {
+      try {
+        await requireDb()
+          .collection('customer_cases')
+          .updateOne(
+            { id: doc.id, $or: [{ workflowStages: { $exists: false } }, { workflowStages: { $size: 0 } }, { workflowStages: null }] },
+            { $set: { workflowStages: stages, updatedAt: utcnow() } }
+          );
+      } catch (_) {
+        /* best-effort snapshot */
+      }
+    }
   }
-  if (!pub.paidPlanId && !pub.planId) {
-    return { ...pub, workflowStages: [] };
-  }
-  const stages = await buildWorkflowStagesForCase(doc);
-  if (stages.length && doc.id) {
+  const merged = { ...doc, workflowStages: stages };
+  const pub = publicCase(merged);
+  if (
+    doc.id &&
+    pub.status === CASE_STATUS.COMPLETED &&
+    doc.status !== CASE_STATUS.COMPLETED &&
+    doc.status !== CASE_STATUS.CLOSED
+  ) {
     try {
       await requireDb()
         .collection('customer_cases')
         .updateOne(
-          { id: doc.id, $or: [{ workflowStages: { $exists: false } }, { workflowStages: { $size: 0 } }, { workflowStages: null }] },
-          { $set: { workflowStages: stages, updatedAt: utcnow() } }
+          { id: doc.id, status: { $ne: CASE_STATUS.CLOSED } },
+          { $set: { status: CASE_STATUS.COMPLETED, updatedAt: utcnow() } }
         );
     } catch (_) {
-      /* best-effort snapshot */
+      /* best-effort persist */
     }
   }
-  return { ...pub, workflowStages: stages };
+  return pub;
 }
 
 function addPlanValidity(fromDate = utcnow()) {
@@ -183,7 +203,9 @@ function deriveStatus(c) {
     return c.planId ? CASE_STATUS.UNPAID : CASE_STATUS.NO_PLAN;
   }
   if (isPlanExpired(c)) return CASE_STATUS.EXPIRED;
-  if (c.kycStatus === KYC_STATUS.APPROVED) return CASE_STATUS.ACTIVE;
+  if (c.kycStatus === KYC_STATUS.APPROVED) {
+    return isWorkflowComplete(c) ? CASE_STATUS.COMPLETED : CASE_STATUS.ACTIVE;
+  }
   if (c.kycStatus === KYC_STATUS.SUBMITTED) return CASE_STATUS.KYC_PENDING;
   return CASE_STATUS.KYC_INCOMPLETE;
 }
@@ -278,7 +300,9 @@ async function updateCase(caseId, patch, { actor } = {}) {
       patch.kycStatus != null ||
       patch.planId != null ||
       patch.planExpiresAt != null ||
-      patch.paidPlanId != null)
+      patch.paidPlanId != null ||
+      patch.stageIndex != null ||
+      patch.workflowStages != null)
   ) {
     const cur = await db.collection('customer_cases').findOne({ id: caseId });
     if (cur) $set.status = deriveStatus({ ...cur, ...patch });
@@ -412,6 +436,7 @@ module.exports = {
   withWorkflowStages,
   buildWorkflowStagesForCase,
   deriveStatus,
+  isWorkflowComplete,
   addPlanValidity,
   isPlanEntitlementActive,
   isPlanExpired,

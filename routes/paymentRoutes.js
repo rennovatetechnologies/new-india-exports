@@ -6,6 +6,7 @@ const { idempotency } = require('../middleware/idempotency');
 const { validateBody } = require('../middleware/validate');
 const { actorFromReq } = require('../services/audit');
 const payments = require('../services/payments');
+const installments = require('../services/installments');
 const { requireDb } = require('../db');
 const { asyncHandler } = require('../utils/asyncHandler');
 const { normalizeEmail, utcnow } = require('../services/helpers');
@@ -28,6 +29,7 @@ function orderResponse(result) {
     currency: result.currency || 'INR',
     paymentId: result.payment?.id,
     amounts: result.payment?.amounts,
+    installment: result.installment || null,
   };
 }
 
@@ -234,6 +236,15 @@ router.get(
   })
 );
 
+router.get(
+  '/me/installment-plans',
+  protect,
+  asyncHandler(async (req, res) => {
+    const items = await installments.listPlansForEmail(req.user.email);
+    return res.json({ success: true, data: items, items });
+  })
+);
+
 router.get('/config/public', (req, res) => {
   res.json({
     success: true,
@@ -242,6 +253,10 @@ router.get('/config/public', (req, res) => {
       appName: config.appName,
       supportEmail: config.supportEmail,
       gstRate: config.gstRate,
+      installmentThresholdInr: config.installmentThresholdInr,
+      installmentCount: config.installmentCount,
+      installmentGapDays: config.installmentGapDays,
+      installmentWindowDays: config.installmentWindowDays,
       seller: {
         legalName: config.seller.legalName,
         gstin: config.seller.gstin,
@@ -253,6 +268,10 @@ router.get('/config/public', (req, res) => {
     appName: config.appName,
     supportEmail: config.supportEmail,
     gstRate: config.gstRate,
+    installmentThresholdInr: config.installmentThresholdInr,
+    installmentCount: config.installmentCount,
+    installmentGapDays: config.installmentGapDays,
+    installmentWindowDays: config.installmentWindowDays,
     seller: {
       legalName: config.seller.legalName,
       gstin: config.seller.gstin,

@@ -1,5 +1,8 @@
+const fs = require('fs');
+const path = require('path');
 const { getDb, ensureIndexes } = require('../db');
 const { utcnow } = require('../services/helpers');
+const drive = require('../services/drive');
 
 const SEED_ADMIN = {
   id: 'REQ-1042',
@@ -55,8 +58,23 @@ const DEFAULT_PLANS = [
     price: 33999,
     discountPercent: 0,
     tagline: 'For first-time exporters',
+    timeline: 'Liaisoning · 22 days',
     featured: false,
     features: ['IEC + AD code', 'Core KYC pack', 'Email support', 'Formation workflow'],
+    marketingFeatures: [
+      { label: 'Gumasta / Shop Act Registration', included: true },
+      { label: 'MSME Registration', included: true },
+      { label: 'IEC (Import Export Code)', included: true },
+      { label: 'Bank Account Assistance', included: true },
+      { label: 'GST Registration & LUT Filing', included: true },
+      { label: 'AD Code Generation', included: true },
+      { label: 'RCMC Certificate', included: true },
+      { label: 'Phytosanitary / Fumigation', included: true },
+      { label: 'DSC (Class 3)', included: true },
+      { label: 'DGFT Registration', included: false },
+      { label: 'ICEGATE Integration', included: false },
+      { label: 'Company Formation', included: false },
+    ],
     kycDocs: BASIC_KYC,
     workflowStages: BASIC_STAGES,
   },
@@ -66,12 +84,27 @@ const DEFAULT_PLANS = [
     price: 43999,
     discountPercent: 0,
     tagline: 'Most exporters pick this',
+    timeline: 'Liaisoning · 22 days',
     featured: true,
     features: [
       'Everything in Basic',
       'RCMC + DGFT advisory',
       'GST & board resolution in KYC',
       'Priority ops support',
+    ],
+    marketingFeatures: [
+      { label: 'Everything in Basic', included: true },
+      { label: 'DGFT Registration & Integration', included: true },
+      { label: 'ICEGATE Registration & Integration', included: true },
+      { label: 'AD Code Approval', included: true },
+      { label: 'IFSC / PFMS Approval', included: true },
+      { label: 'Company Formation', included: false },
+      { label: 'Trademark Application', included: false },
+      { label: 'Quality Assessment Support', included: false },
+      { label: 'Pre & Post Shipment Docs', included: false },
+      { label: 'Shipment Cost Analysis', included: false },
+      { label: 'Expert Compliance Reviews', included: false },
+      { label: 'Exhibition Networking', included: false },
     ],
     kycDocs: [
       ...BASIC_KYC,
@@ -90,12 +123,27 @@ const DEFAULT_PLANS = [
     price: 83999,
     discountPercent: 0,
     tagline: 'Full white-glove desk',
+    timeline: 'Liaisoning · 45 days',
     featured: false,
     features: [
       'Everything in Standard',
       'Dedicated operations owner',
       'Priority event seating support',
       'Extended documentation pack',
+    ],
+    marketingFeatures: [
+      { label: 'Everything in Standard', included: true },
+      { label: 'Company Formation', included: true },
+      { label: 'Trademark Application', included: true },
+      { label: 'Digital Platform Assistance', included: true },
+      { label: 'Quality Assessment Certification', included: true },
+      { label: 'Pre & Post Shipment Documentation', included: true },
+      { label: 'Shipment Cost Analysis & Statement', included: true },
+      { label: 'Expert Reviews & Compliance', included: true },
+      { label: 'Exhibition Exposure & Networking', included: true },
+      { label: 'Dedicated success manager', included: true },
+      { label: 'Priority operations queue', included: true },
+      { label: 'Investor & buyer intros', included: true },
     ],
     kycDocs: [
       ...BASIC_KYC,
@@ -117,23 +165,29 @@ const DEFAULT_EVENTS = [
   {
     id: 'e1',
     title: 'Global Buyer-Seller Meet 2026',
-    date: '22 Jun 2026',
+    date: '2026-06-22',
+    startDate: '2026-06-22',
+    endDate: '2026-06-22',
     city: 'Mumbai, India',
     img: '/event.png',
     seats: '120 delegates',
     capacity: 120,
     priceInr: 4999,
+    discountPercent: 0,
     desc: 'Curated meet between Indian exporters and 40+ international buyers across spices, organic food and fresh produce.',
   },
   {
     id: 'e2',
     title: 'New India Export Summit',
-    date: '14 Aug 2026',
+    date: '2026-08-14',
+    startDate: '2026-08-14',
+    endDate: '2026-08-15',
     city: 'Dubai, UAE',
     img: '/event2.webp',
     seats: '200 delegates',
     capacity: 200,
     priceInr: 0,
+    discountPercent: 0,
     desc: 'Two-day summit on MENA market access, halal certification and trade finance for Indian exporters.',
   },
 ];
@@ -141,6 +195,152 @@ const DEFAULT_EVENTS = [
 const DEFAULT_OPS_ROSTER = [
   { email: 'ramakrishnamnit@gmail.com', name: 'Ramakrishna' },
 ];
+
+const MOCK_BROCHURE_IDS = Array.from({ length: 17 }, (_, i) => `gallery-b${i + 1}`);
+
+const BROCHURE_ASSETS_DIR = path.join(__dirname, '../assets/brochures');
+const FRONTEND_PUBLIC_DIR = path.join(__dirname, '../../india-exports-hub-53/public');
+
+/** Real published PDFs — stored on Drive/local and listed by GET /api/brochures. */
+const DEFAULT_BROCHURES = [
+  {
+    id: 'pdf-workshop-flyer',
+    name: 'Workshop Flyer',
+    fileName: 'workshop-flyer.pdf',
+    mimeType: 'application/pdf',
+    showInNav: true,
+    sortOrder: 10,
+    sources: [
+      path.join(BROCHURE_ASSETS_DIR, 'workshop-flyer.pdf'),
+      path.join(FRONTEND_PUBLIC_DIR, 'new india (4).pdf'),
+    ],
+  },
+  {
+    id: 'pdf-workshop-brochure',
+    name: 'Workshop Brochure',
+    fileName: 'workshop-brochure.pdf',
+    mimeType: 'application/pdf',
+    showInNav: true,
+    sortOrder: 20,
+    sources: [
+      path.join(BROCHURE_ASSETS_DIR, 'workshop-brochure.pdf'),
+      path.join(FRONTEND_PUBLIC_DIR, 'BrochureFinal.pdf'),
+    ],
+  },
+  {
+    id: 'pdf-nie-virtual',
+    name: 'NIE X Virtual Workshop Brochure',
+    fileName: 'nie-virtual-workshop.pdf',
+    mimeType: 'application/pdf',
+    showInNav: true,
+    sortOrder: 30,
+    sources: [
+      path.join(BROCHURE_ASSETS_DIR, 'nie-virtual-workshop.pdf'),
+      path.join(FRONTEND_PUBLIC_DIR, 'brochure/NIE X VIRTUAL SHIPMENT WORKSHOP (5 DAYS) BROCHURE.pdf'),
+    ],
+  },
+];
+
+function resolveBrochureSource(sources) {
+  for (const filePath of sources) {
+    if (filePath && fs.existsSync(filePath)) return filePath;
+  }
+  return null;
+}
+
+function brochurePublicPath(id) {
+  return `/api/brochures/${encodeURIComponent(id)}/file`;
+}
+
+/** Upload catalog PDFs into Drive/local and upsert Mongo rows (idempotent). */
+async function seedDefaultBrochures(db) {
+  let uploaded = 0;
+  let restored = 0;
+  for (const item of DEFAULT_BROCHURES) {
+    const existing = await db.collection('brochures').findOne({ id: item.id });
+    const hasFile = Boolean(existing?.fileId || existing?.driveFileId);
+    const live = existing && !existing.deletedAt;
+
+    if (live && hasFile) continue;
+
+    if (existing?.deletedAt && hasFile) {
+      await db.collection('brochures').updateOne(
+        { id: item.id },
+        { $set: { deletedAt: null, updatedAt: utcnow() } }
+      );
+      restored += 1;
+      continue;
+    }
+
+    const filePath = resolveBrochureSource(item.sources);
+    if (!filePath) {
+      console.warn(`Brochure PDF missing for ${item.id} (${item.fileName})`);
+      continue;
+    }
+
+    const folderId = await drive.ensureBrochureFolder();
+    const buffer = fs.readFileSync(filePath);
+    const stored = await drive.upload({
+      folderId,
+      buffer,
+      fileName: item.fileName,
+      mimeType: item.mimeType,
+      appProperties: { kind: 'brochure', brochureId: item.id, seeded: 'true' },
+    });
+    const publicPath = brochurePublicPath(item.id);
+    const now = utcnow();
+    await db.collection('brochures').updateOne(
+      { id: item.id },
+      {
+        $set: {
+          id: item.id,
+          name: item.name,
+          title: item.name,
+          kind: 'pdf',
+          description: '',
+          category: '',
+          showInNav: item.showInNav !== false,
+          sortOrder: item.sortOrder,
+          fileId: stored.fileId,
+          driveFileId: stored.driveFileId,
+          fileUrl: publicPath,
+          fileName: item.fileName,
+          fileType: item.mimeType,
+          fileSize: stored.size,
+          path: publicPath,
+          updatedAt: now,
+          deletedAt: null,
+        },
+        $setOnInsert: { createdAt: existing?.createdAt || now },
+      },
+      { upsert: true }
+    );
+    uploaded += 1;
+  }
+  if (uploaded || restored) {
+    console.log(
+      `Brochure PDFs ready: ${uploaded} uploaded, ${restored} restored`
+    );
+  }
+}
+
+/** Soft-delete catalog rows that were inserted as demo placeholders. */
+async function purgeSeededMarketingCatalog(db) {
+  const live = { $or: [{ deletedAt: null }, { deletedAt: { $exists: false } }] };
+  const events = await db.collection('events').updateMany(
+    { id: { $in: DEFAULT_EVENTS.map((e) => e.id) }, ...live },
+    { $set: { deletedAt: utcnow() } }
+  );
+  const brochures = await db.collection('brochures').updateMany(
+    { id: { $in: MOCK_BROCHURE_IDS }, ...live },
+    { $set: { deletedAt: utcnow() } }
+  );
+  const evN = events.modifiedCount || 0;
+  const brN = brochures.modifiedCount || 0;
+  if (evN || brN) {
+    console.log(`Removed seeded mock catalog: ${evN} events, ${brN} brochures`);
+  }
+}
 
 async function seedIfEmpty() {
   const db = getDb();
@@ -206,38 +406,32 @@ async function seedIfEmpty() {
     await db.collection('plans').insertMany(DEFAULT_PLANS.map((p) => ({ ...p, createdAt: utcnow() })));
     console.log('Seeded plans');
   } else {
-    // ensure kycDocs/workflowStages exist on older seeds
+    // Backfill catalog fields on older seeds without overwriting admin edits.
     for (const plan of DEFAULT_PLANS) {
       const existing = await db.collection('plans').findOne({ id: plan.id });
-      if (existing && (!existing.kycDocs || !existing.workflowStages)) {
-        await db.collection('plans').updateOne(
-          { id: plan.id },
-          {
-            $set: {
-              kycDocs: plan.kycDocs,
-              workflowStages: plan.workflowStages,
-              features: plan.features,
-              tagline: plan.tagline,
-              featured: plan.featured,
-              discountPercent: existing.discountPercent ?? 0,
-            },
-          }
-        );
+      if (!existing) continue;
+      const patch = {};
+      if (!existing.kycDocs || !existing.workflowStages) {
+        patch.kycDocs = existing.kycDocs || plan.kycDocs;
+        patch.workflowStages = existing.workflowStages || plan.workflowStages;
+        if (!existing.features) patch.features = plan.features;
+        if (!existing.tagline) patch.tagline = plan.tagline;
+        if (existing.featured == null) patch.featured = plan.featured;
+        if (existing.discountPercent == null) patch.discountPercent = 0;
+      }
+      if (!existing.timeline) patch.timeline = plan.timeline;
+      if (!Array.isArray(existing.marketingFeatures) || existing.marketingFeatures.length === 0) {
+        patch.marketingFeatures = plan.marketingFeatures;
+      }
+      if (Object.keys(patch).length) {
+        await db.collection('plans').updateOne({ id: plan.id }, { $set: patch });
       }
     }
   }
 
-  if ((await db.collection('events').countDocuments({})) === 0) {
-    await db.collection('events').insertMany(DEFAULT_EVENTS.map((e) => ({ ...e, createdAt: utcnow() })));
-    console.log('Seeded events');
-  } else {
-    for (const ev of DEFAULT_EVENTS) {
-      await db.collection('events').updateOne(
-        { id: ev.id, priceInr: { $exists: false } },
-        { $set: { priceInr: ev.priceInr } }
-      );
-    }
-  }
+  // Placeholder gallery rows stay purged. Real PDF catalogues are stored on the backend.
+  await purgeSeededMarketingCatalog(db);
+  await seedDefaultBrochures(db);
 
   await db.collection('config').updateOne(
     { key: 'ops_roster' },
@@ -246,57 +440,11 @@ async function seedIfEmpty() {
   );
   console.log(`Seeded ops roster: ${DEFAULT_OPS_ROSTER.map((r) => r.email).join(', ')}`);
 
-  // Brochure metadata (static site paths for gallery photos / bundled PDFs — not Drive uploads).
-  if ((await db.collection('brochures').countDocuments({})) === 0) {
-    const gallery = Array.from({ length: 17 }, (_, i) => ({
-      id: `gallery-b${i + 1}`,
-      title: `Brochure ${i + 1}`,
-      name: `Brochure ${i + 1}`,
-      kind: 'gallery',
-      path: `/brochure/B${i + 1}.jpg`,
-      showInNav: false,
-      sortOrder: 100 + i,
-      createdAt: utcnow(),
-      updatedAt: utcnow(),
-      deletedAt: null,
-    }));
-    const pdfs = [
-      {
-        id: 'pdf-workshop-flyer',
-        title: 'Workshop Flyer',
-        name: 'Workshop Flyer',
-        kind: 'pdf',
-        path: '/new india (4).pdf',
-        showInNav: true,
-        sortOrder: 10,
-      },
-      {
-        id: 'pdf-workshop-brochure',
-        title: 'Workshop Brochure',
-        name: 'Workshop Brochure',
-        kind: 'pdf',
-        path: '/BrochureFinal.pdf',
-        showInNav: true,
-        sortOrder: 20,
-      },
-      {
-        id: 'pdf-nie-virtual',
-        title: 'NIE X Virtual Workshop Brochure',
-        name: 'NIE X Virtual Workshop Brochure',
-        kind: 'pdf',
-        path: '/brochure/NIE X VIRTUAL SHIPMENT WORKSHOP (5 DAYS) BROCHURE.pdf',
-        showInNav: true,
-        sortOrder: 30,
-      },
-    ].map((b) => ({ ...b, createdAt: utcnow(), updatedAt: utcnow(), deletedAt: null }));
-    await db.collection('brochures').insertMany([...pdfs, ...gallery]);
-    console.log('Seeded brochures catalog');
-  }
 
   // Do NOT seed legacy VST shipment cases for the production product surface.
 }
 
-module.exports = { seedIfEmpty, DEFAULT_PLANS, DEFAULT_EVENTS };
+module.exports = { seedIfEmpty, DEFAULT_PLANS, DEFAULT_EVENTS, DEFAULT_BROCHURES };
 
 if (require.main === module) {
   require('dotenv').config();

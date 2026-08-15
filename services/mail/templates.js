@@ -1,6 +1,7 @@
 const fs = require('fs');
 const path = require('path');
 const config = require('../../config');
+const { LOGO_CID } = require('../../assets');
 
 const TEMPLATES_DIR = path.join(__dirname, 'templates');
 
@@ -66,6 +67,9 @@ const SUBJECTS = {
   'payment.invoice': 'Tax Invoice {{invoiceNumber}} — New India Export',
   'payment.failed': 'We could not complete your payment',
   'payment.ops_alert': 'New paid customer: {{customer}} · {{planName}}',
+  'payment.installment_schedule': 'Installment {{installmentNumber}} of {{installmentCount}} received — {{title}}',
+  'payment.reminder': 'Payment reminder: installment {{installmentNumber}} of {{installmentCount}} — {{title}}',
+  'payment.overdue': 'Overdue installment {{installmentNumber}} of {{installmentCount}} — {{title}}',
   'kyc.submitted_customer': 'KYC received — we are reviewing your details',
   'kyc.submitted_ops': 'KYC ready for review: {{legalName}}',
   'kyc.approved': 'Great news — your KYC is approved',
@@ -195,8 +199,8 @@ function layout({ title, preheader, bodyHtml, ctaUrl, ctaLabel, attachmentHtml }
       <table role="presentation" width="100%" style="max-width:580px;background:#FFFcf7;border:1px solid #E7DFD2;border-radius:10px;overflow:hidden">
         <tr>
           <td style="padding:22px 28px 18px;border-bottom:1px solid #EFE8DC;background:linear-gradient(180deg,#FFFcf7 0%,#F9F4EA 100%)">
-            <div style="font-size:11px;letter-spacing:0.18em;text-transform:uppercase;color:#9A7B2F;font-weight:700">${brand}</div>
-            <div style="margin-top:4px;font-size:12px;color:#A8A29E">New India Export</div>
+            <img src="cid:${LOGO_CID}" alt="${brand}" width="200" height="70" style="display:block;width:200px;height:auto;max-width:200px;border:0;outline:none;text-decoration:none"/>
+            <div style="margin-top:8px;font-size:12px;color:#A8A29E">New India Export</div>
           </td>
         </tr>
         <tr>
@@ -331,6 +335,68 @@ function builtInBodies(template, v) {
           ])}
           <p style="margin:16px 0 0">Your official GST tax invoice is sent separately (or attached when available). Keep it for your accounts team.</p>`,
         text: `Hi ${hi},\n\nPayment confirmed for ${v.planName || 'your purchase'}.\nAmount: ${money(v.amountInr)}\nPayment ID: ${v.paymentId || ''}\nCase: ${v.caseId || ''}\n\nYour GST invoice is sent separately.`,
+      };
+
+    case 'payment.installment_schedule':
+      return {
+        title: `Installment ${v.installmentNumber || ''} of ${v.installmentCount || 3} received`,
+        preheader: `Next payment for ${v.title || 'your event'} is due ${v.nextDueDate || 'soon'}.`,
+        ctaLabel: 'Pay next installment',
+        html: `
+          <p style="margin:0 0 14px">Hi ${hi},</p>
+          <p style="margin:0 0 14px">We received installment <strong>${escapeHtml(v.installmentNumber || '')} of ${escapeHtml(v.installmentCount || 3)}</strong> for <strong>${escapeHtml(v.title || 'your event')}</strong>. Your seat is held while you complete the remaining payments within 30 days.</p>
+          ${detailRows([
+            { label: 'Amount received', value: money(v.amountInr) },
+            { label: 'Remaining installments', value: v.remainingCount },
+            { label: 'Next due', value: v.nextDueDate },
+            { label: 'Next amount', value: money(v.nextAmountInr) },
+            { label: 'Complete by', value: v.dueBy },
+          ])}
+          ${
+            v.schedule
+              ? `<div style="margin:16px 0;padding:14px 16px;background:#F5F5F4;border-radius:6px;color:#1C1917;white-space:pre-wrap">${escapeHtml(v.schedule)}</div>`
+              : ''
+          }
+          <p style="margin:16px 0 0">Pay each installment 10 days apart. You may pay the next installment early from your dashboard.</p>`,
+        text: `Hi ${hi},\n\nInstallment ${v.installmentNumber || ''} of ${v.installmentCount || 3} received for ${v.title || 'your event'}.\nAmount: ${money(v.amountInr)}\nNext due: ${v.nextDueDate || ''} (${money(v.nextAmountInr)})\nComplete all payments by ${v.dueBy || ''}.\n\n${v.schedule || ''}`,
+      };
+
+    case 'payment.reminder':
+      return {
+        title: v.kind === 'due' ? 'Payment due today' : 'Upcoming payment reminder',
+        preheader: `Installment ${v.installmentNumber || ''} for ${v.title || 'your event'} is ${v.kind === 'due' ? 'due today' : 'coming up'}.`,
+        ctaLabel: 'Pay installment',
+        html: `
+          <p style="margin:0 0 14px">Hi ${hi},</p>
+          <p style="margin:0 0 14px">${escapeHtml(v.message || `Installment ${v.installmentNumber || ''} of ${v.installmentCount || 3} for ${v.title || 'your event'} is due on ${v.dueDate || ''}.`)}</p>
+          ${detailRows([
+            { label: 'Event', value: v.title },
+            { label: 'Installment', value: `${v.installmentNumber || ''} of ${v.installmentCount || 3}` },
+            { label: 'Amount', value: money(v.amountInr) },
+            { label: 'Due date', value: v.dueDate },
+            { label: 'Complete plan by', value: v.dueBy },
+          ])}
+          <p style="margin:16px 0 0">Pay securely from your dashboard. All three installments must be completed within 30 days.</p>`,
+        text: `Hi ${hi},\n\n${v.message || `Installment ${v.installmentNumber || ''} of ${v.installmentCount || 3} is due on ${v.dueDate || ''}.`}\nAmount: ${money(v.amountInr)}\nPay from your dashboard.`,
+      };
+
+    case 'payment.overdue':
+      return {
+        title: 'Overdue installment',
+        preheader: `Installment ${v.installmentNumber || ''} for ${v.title || 'your event'} is overdue.`,
+        ctaLabel: 'Pay now',
+        html: `
+          <p style="margin:0 0 14px">Hi ${hi},</p>
+          <p style="margin:0 0 14px">${escapeHtml(v.message || `Installment ${v.installmentNumber || ''} of ${v.installmentCount || 3} for ${v.title || 'your event'} is overdue.`)}</p>
+          ${detailRows([
+            { label: 'Event', value: v.title },
+            { label: 'Installment', value: `${v.installmentNumber || ''} of ${v.installmentCount || 3}` },
+            { label: 'Amount due', value: money(v.amountInr) },
+            { label: 'Was due', value: v.dueDate },
+            { label: 'Complete plan by', value: v.dueBy },
+          ])}
+          <p style="margin:16px 0 0">Please complete this payment as soon as possible so your event seat stays reserved.</p>`,
+        text: `Hi ${hi},\n\n${v.message || `Installment ${v.installmentNumber || ''} is overdue.`}\nAmount: ${money(v.amountInr)}\nWas due: ${v.dueDate || ''}\nPay from your dashboard.`,
       };
 
     case 'payment.invoice': {
@@ -750,6 +816,9 @@ function defaultCta(template, vars) {
     'payment.receipt': `${base}/dashboard`,
     'payment.invoice': `${base}/dashboard/billing`,
     'payment.failed': `${base}/dashboard/billing`,
+    'payment.installment_schedule': `${base}/dashboard/events`,
+    'payment.reminder': `${base}/dashboard/events`,
+    'payment.overdue': `${base}/dashboard/events`,
     'payment.ops_alert': caseWorkflow(vars.caseId),
     'kyc.submitted_customer': `${base}/dashboard`,
     'kyc.submitted_ops': `${base}/admin?filter=pending_kyc`,

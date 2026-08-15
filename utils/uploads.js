@@ -19,7 +19,26 @@ function makeUploader({ maxBytes, imageOnly = false } = {}) {
 }
 
 const uploadDoc = makeUploader();
+const uploadBrochure = makeUploader({ maxBytes: config.maxBrochurePdfBytes });
 const uploadAvatar = makeUploader({ maxBytes: 2 * 1024 * 1024, imageOnly: true });
 const uploadEventImage = makeUploader({ maxBytes: 2 * 1024 * 1024, imageOnly: true });
 
-module.exports = { uploadDoc, uploadAvatar, uploadEventImage, ALLOWED_EXT };
+/** Run multer only for multipart requests so JSON PUT/POST still works. */
+function optionalFile(uploader) {
+  return (req, res, next) => {
+    const ct = String(req.headers['content-type'] || '');
+    if (ct.includes('multipart/form-data')) {
+      return uploader.single('file')(req, res, next);
+    }
+    return next();
+  };
+}
+
+module.exports = {
+  uploadDoc,
+  uploadBrochure,
+  uploadAvatar,
+  uploadEventImage,
+  optionalFile,
+  ALLOWED_EXT,
+};

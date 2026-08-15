@@ -209,6 +209,8 @@ router.get(
         currency: p.currency || 'INR',
         razorpayOrderId: p.razorpayOrderId || null,
         razorpayPaymentId: p.razorpayPaymentId || null,
+        installmentPlanId: p.installmentPlanId || null,
+        installmentNumber: p.installmentNumber || null,
         at: p.paidAt || p.createdAt || null,
         paidAt: p.paidAt || null,
         createdAt: p.createdAt || null,
