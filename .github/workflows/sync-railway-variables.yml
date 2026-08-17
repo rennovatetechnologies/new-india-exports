@@ -1,13 +1,19 @@
 name: Sync GitHub secrets to Railway
 
-# Optional: copy GitHub secrets → Railway variables (same names).
-# Production deploys are Railway’s GitHub integration on push to master.
-# This workflow does not deploy. Run it once after adding RAILWAY_TOKEN,
-# RAILWAY_PROJECT_ID, and RAILWAY_SERVICE_ID if variables are not already
-# set in the Railway dashboard.
+# GitHub secrets are the source of truth. Railway cannot read them on its own.
+# This job copies the same names onto the production service, then redeploys.
+#
+# One-time setup:
+# 1. Repo secrets from .env.production.local (node scripts/pushGithubSecrets.js)
+# 2. RAILWAY_TOKEN (Railway → Account → Tokens)
+# 3. RAILWAY_PROJECT_ID + RAILWAY_SERVICE_ID (Railway → Settings)
 
 on:
   workflow_dispatch:
+  push:
+    branches: [master, main]
+    paths:
+      - '.github/workflows/sync-railway-variables.yml'
 
 jobs:
   sync:
@@ -21,6 +27,7 @@ jobs:
           RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
           RAILWAY_PROJECT_ID: ${{ secrets.RAILWAY_PROJECT_ID }}
           RAILWAY_SERVICE_ID: ${{ secrets.RAILWAY_SERVICE_ID }}
+          RAILWAY_ENVIRONMENT_ID: ${{ secrets.RAILWAY_ENVIRONMENT_ID }}
           APP_ENV: ${{ secrets.APP_ENV }}
           MONGODB_URI: ${{ secrets.MONGODB_URI }}
           MONGODB_DB_NAME: ${{ secrets.MONGODB_DB_NAME }}
@@ -54,6 +61,7 @@ jobs:
           ADMIN_INBOX: ${{ secrets.ADMIN_INBOX }}
           SUPPORT_EMAIL: ${{ secrets.SUPPORT_EMAIL }}
           APP_NAME: ${{ secrets.APP_NAME }}
+          AUDIT_LOG_TTL_DAYS: ${{ secrets.AUDIT_LOG_TTL_DAYS }}
           GCS_BUCKET: ${{ secrets.GCS_BUCKET }}
           GCS_PROJECT_ID: ${{ secrets.GCS_PROJECT_ID }}
           GCS_ENV_FOLDER: ${{ secrets.GCS_ENV_FOLDER }}
@@ -64,24 +72,33 @@ jobs:
             echo "Add GitHub secrets RAILWAY_TOKEN, RAILWAY_PROJECT_ID, and RAILWAY_SERVICE_ID, then re-run."
             exit 1
           fi
+          ENV_NAME="${RAILWAY_ENVIRONMENT_ID:-production}"
           KEYS="
             APP_ENV MONGODB_URI MONGODB_DB_NAME MONGODB_DB_NAME_NONPROD MONGODB_DB_NAME_PROD
             JWT_SECRET JWT_EXPIRE_HOURS CORS_ORIGINS FRONTEND_URL ENABLE_DOCS ENABLE_LEGACY_SHIPMENT
             RAZORPAY_KEY_ID RAZORPAY_KEY_SECRET RAZORPAY_WEBHOOK_SECRET
             GST_RATE WORKSHOP_AMOUNT_INR BOOKING_AMOUNT_INR
-            OTP_TTL_MINUTES OTP_RATE_LIMIT DISABLE_RATE_LIMITS
+            OTP_TTL_MINUTES OTP_RATE_LIMIT DISABLE_RATE_LIMITS AUDIT_LOG_TTL_DAYS
             MAX_UPLOAD_BYTES MAX_CASE_UPLOAD_BYTES
             SMTP_HOST SMTP_PORT SMTP_SECURE SMTP_USER SMTP_PASS
             MAIL_FROM MAIL_REPLY_TO OPS_INBOX ADMIN_INBOX SUPPORT_EMAIL APP_NAME
             GCS_BUCKET GCS_PROJECT_ID GCS_ENV_FOLDER GCS_CREDENTIALS_JSON
           "
+          synced=0
           for key in $KEYS; do
             val="${!key-}"
             if [ -n "$val" ]; then
               railway variables set --skip-deploys \
                 --project "$RAILWAY_PROJECT_ID" \
                 --service "$RAILWAY_SERVICE_ID" \
-                --environment production \
+                --environment "$ENV_NAME" \
                 "$key=$val"
+              synced=$((synced + 1))
             fi
           done
+          echo "Synced $synced variables. Redeploying production so MONGODB_URI is picked up."
+          railway redeploy \
+            --project "$RAILWAY_PROJECT_ID" \
+            --service "$RAILWAY_SERVICE_ID" \
+            --environment "$ENV_NAME" \
+            --yes

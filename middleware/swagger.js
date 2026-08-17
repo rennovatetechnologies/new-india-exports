@@ -33,19 +33,32 @@ function mountSwagger(app) {
   }
   const swaggerUi = require('swagger-ui-express');
 
+  function specForRequest(req) {
+    const spec = JSON.parse(JSON.stringify(openApiSpec));
+    const proto = (req.get('x-forwarded-proto') || req.protocol || 'http').split(',')[0].trim();
+    const host = (req.get('x-forwarded-host') || req.get('host') || '').split(',')[0].trim();
+    const current = host ? `${proto}://${host}` : '/';
+    spec.servers = [
+      { url: current, description: 'This server' },
+      { url: `http://127.0.0.1:${config.port}`, description: 'Local' },
+    ];
+    return spec;
+  }
+
   app.get('/openapi.yaml', (req, res) => {
     res.type('text/yaml').sendFile(specPath);
   });
 
   app.get('/openapi.json', (req, res) => {
-    res.json(openApiSpec);
+    res.json(specForRequest(req));
   });
 
   app.use(
     '/docs',
     swaggerUi.serve,
-    swaggerUi.setup(openApiSpec, {
+    swaggerUi.setup(null, {
       customSiteTitle: 'New India Exports API',
+      swaggerUrl: '/openapi.json',
       swaggerOptions: {
         persistAuthorization: true,
         displayRequestDuration: true,

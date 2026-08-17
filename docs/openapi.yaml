@@ -8,11 +8,11 @@ info:
     email: support@newindiaexport.com
 servers:
   -
-    url: 'http://127.0.0.1:5001'
-    description: Local
-  -
     url: /
     description: 'Current host'
+  -
+    url: 'http://127.0.0.1:5001'
+    description: Local
 tags:
   -
     name: System

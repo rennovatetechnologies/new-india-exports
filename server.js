@@ -4,7 +4,7 @@ const cors = require('cors');
 const morgan = require('morgan');
 const multer = require('multer');
 const config = require('./config');
-const { connectDb } = require('./db');
+const { connectDb, getDb } = require('./db');
 const { seedIfEmpty } = require('./scripts/seed');
 const { verifyWebhookSignature, capturePayment, markPaymentFailed } = require('./services/payments');
 const { startReminderJob } = require('./services/installments');
@@ -105,7 +105,12 @@ app.get('/', (req, res) => {
 });
 
 app.get('/health', (req, res) => {
-  res.json({ ok: true, env: config.appEnv });
+  res.json({
+    ok: true,
+    env: config.appEnv,
+    mongoUri: Boolean(config.mongodbUri),
+    db: Boolean(getDb()),
+  });
 });
 
 if (config.enableDocs) {

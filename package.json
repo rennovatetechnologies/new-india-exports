@@ -14,7 +14,8 @@
     "check": "node --check server.js && for f in routes/*.js services/*.js services/**/*.js middleware/*.js schemas/*.js; do node --check \"$f\" || exit 1; done",
     "db:setup": "node scripts/setupDatabases.js",
     "gcs:init": "node scripts/initGcs.js",
-    "catalog:sync": "node scripts/syncSharedCatalog.js"
+    "catalog:sync": "node scripts/syncSharedCatalog.js",
+    "secrets:github": "node scripts/pushGithubSecrets.js"
   },
   "keywords": [],
   "author": "",
