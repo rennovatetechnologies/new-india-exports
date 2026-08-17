@@ -13,6 +13,7 @@ const { connectDb, getDb } = require('./db');
 const { seedIfEmpty } = require('./scripts/seed');
 const { verifyWebhookSignature, capturePayment, markPaymentFailed } = require('./services/payments');
 const { startReminderJob } = require('./services/installments');
+const { verifySmtp } = require('./services/mail');
 const { requestIdMiddleware } = require('./middleware/auth');
 const drive = require('./services/drive');
 
@@ -207,6 +208,7 @@ async function start() {
         'Razorpay TEST keys (rzp_test_) are in use in production until live keys are confirmed.'
       );
     }
+    verifySmtp().catch((e) => console.warn('SMTP verify skipped:', e.message));
   });
 }
 

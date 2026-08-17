@@ -1,3 +1,4 @@
+const dns = require('dns');
 const nodemailer = require('nodemailer');
 const config = require('../../config');
 const { getDb, requireDb } = require('../../db');
@@ -8,26 +9,103 @@ const { logoInlineAttachment } = require('../../assets');
 
 let transporter = null;
 
-function getTransporter() {
-  if (transporter) return transporter;
-  if (!config.smtp.user || !config.smtp.pass) {
-    return null;
-  }
-  transporter = nodemailer.createTransport({
+function ipv4Lookup(hostname, _options, callback) {
+  dns.lookup(hostname, { family: 4, all: false }, callback);
+}
+
+function smtpCandidates() {
+  if (!config.smtp.user || !config.smtp.pass) return [];
+  const primary = { port: config.smtp.port, secure: config.smtp.secure };
+  const fallback =
+    primary.port === 465
+      ? { port: 587, secure: false }
+      : primary.port === 587
+        ? { port: 465, secure: true }
+        : null;
+  const list = [primary];
+  if (fallback && fallback.port !== primary.port) list.push(fallback);
+  return list;
+}
+
+function makeTransport({ port, secure }) {
+  return nodemailer.createTransport({
     host: config.smtp.host,
-    port: config.smtp.port,
-    secure: config.smtp.secure,
-    // Railway containers cannot reach Gmail over IPv6 (ENETUNREACH :::465).
+    port,
+    secure,
+    // Railway has no outbound IPv6. Force A-record sockets, not just prefer them.
     family: 4,
-    connectionTimeout: 15000,
-    greetingTimeout: 15000,
+    lookup: ipv4Lookup,
+    connectionTimeout: 12000,
+    greetingTimeout: 12000,
     socketTimeout: 20000,
+    requireTLS: !secure,
     auth: {
       user: config.smtp.user,
       pass: config.smtp.pass,
     },
+    tls: { servername: config.smtp.host },
   });
+}
+
+function getTransporter() {
+  if (transporter) return transporter;
+  const [first] = smtpCandidates();
+  if (!first) return null;
+  transporter = makeTransport(first);
   return transporter;
+}
+
+async function sendMailWithFallback(mail) {
+  const candidates = smtpCandidates();
+  if (!candidates.length) {
+    const err = new Error('SMTP not configured');
+    err.code = 'SMTP_NOT_CONFIGURED';
+    throw err;
+  }
+  let lastErr;
+  for (const opts of candidates) {
+    const tx = makeTransport(opts);
+    try {
+      const info = await tx.sendMail(mail);
+      transporter = tx;
+      console.info(`SMTP sent via ${config.smtp.host}:${opts.port}`);
+      return info;
+    } catch (e) {
+      lastErr = e;
+      console.warn(`SMTP ${config.smtp.host}:${opts.port} failed: ${e.message}`);
+      try {
+        tx.close();
+      } catch {
+        /* ignore */
+      }
+    }
+  }
+  throw lastErr;
+}
+
+async function verifySmtp() {
+  const candidates = smtpCandidates();
+  if (!candidates.length) {
+    console.warn('SMTP not configured (SMTP_USER / SMTP_PASS missing)');
+    return false;
+  }
+  for (const opts of candidates) {
+    const tx = makeTransport(opts);
+    try {
+      await tx.verify();
+      transporter = tx;
+      console.info(`SMTP verify ok ${config.smtp.host}:${opts.port} as ${config.smtp.user}`);
+      return true;
+    } catch (e) {
+      console.warn(`SMTP verify ${config.smtp.host}:${opts.port} failed: ${e.message}`);
+      try {
+        tx.close();
+      } catch {
+        /* ignore */
+      }
+    }
+  }
+  return false;
 }
 
 /**
@@ -107,8 +185,7 @@ async function sendOutbox(outboxId, attachments = [], actor) {
     { $inc: { attempts: 1 }, $set: { updatedAt: utcnow() } }
   );
 
-  const tx = getTransporter();
-  if (!tx) {
+  if (!smtpCandidates().length) {
     if (!config.isProduction) {
       console.info(`[DEV MAIL] to=${doc.to.join(',')} subject=${doc.subject} template=${doc.template}`);
       await db.collection('email_outbox').updateOne(
@@ -149,7 +226,7 @@ async function sendOutbox(outboxId, attachments = [], actor) {
   try {
     const logo = logoInlineAttachment();
     const mailAttachments = logo ? [logo, ...(attachments || [])] : attachments;
-    const info = await tx.sendMail({
+    const info = await sendMailWithFallback({
       from: config.mailFrom,
       to: doc.to.join(', '),
       bcc: doc.bcc?.length ? doc.bcc.join(', ') : undefined,
@@ -213,4 +290,4 @@ async function retryFailed(limit = 20) {
   return rows.length;
 }
 
-module.exports = { enqueueEmail, sendOutbox, retryFailed, getTransporter };
+module.exports = { enqueueEmail, sendOutbox, retryFailed, getTransporter, verifySmtp };
