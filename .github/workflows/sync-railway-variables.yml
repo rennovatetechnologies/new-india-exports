@@ -1,19 +1,14 @@
 name: Sync GitHub secrets to Railway
 
-# GitHub secrets are the source of truth. Railway cannot read them on its own.
-# This job copies the same names onto the production service, then redeploys.
+# Backend only. GitHub Actions secrets are the source of truth.
+# This job writes them as a .env and sets the same KEY=VALUE pairs on the
+# new-india-exports Railway service, then redeploys.
 #
-# One-time setup:
-# 1. Repo secrets from .env.production.local (node scripts/pushGithubSecrets.js)
-# 2. RAILWAY_TOKEN (Railway → Account → Tokens)
-# 3. RAILWAY_PROJECT_ID + RAILWAY_SERVICE_ID (Railway → Settings)
+# Needs GitHub secret RAILWAY_TOKEN (Railway → Account → Tokens).
+# Project/service IDs are already stored as GitHub secrets.
 
 on:
   workflow_dispatch:
-  push:
-    branches: [master, main]
-    paths:
-      - '.github/workflows/sync-railway-variables.yml'
 
 jobs:
   sync:
@@ -22,7 +17,7 @@ jobs:
       - name: Install Railway CLI
         run: npm i -g @railway/cli
 
-      - name: Push variables to Railway
+      - name: Write .env from GitHub secrets and set on Railway
         env:
           RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
           RAILWAY_PROJECT_ID: ${{ secrets.RAILWAY_PROJECT_ID }}
@@ -69,11 +64,13 @@ jobs:
         run: |
           set -euo pipefail
           if [ -z "${RAILWAY_TOKEN:-}" ] || [ -z "${RAILWAY_PROJECT_ID:-}" ] || [ -z "${RAILWAY_SERVICE_ID:-}" ]; then
-            echo "Add GitHub secrets RAILWAY_TOKEN, RAILWAY_PROJECT_ID, and RAILWAY_SERVICE_ID, then re-run."
+            echo "Add GitHub secret RAILWAY_TOKEN, then re-run this workflow."
             exit 1
           fi
           ENV_NAME="${RAILWAY_ENVIRONMENT_ID:-production}"
-          KEYS="
+          python3 - <<'PY'
+          import os
+          keys = """
             APP_ENV MONGODB_URI MONGODB_DB_NAME MONGODB_DB_NAME_NONPROD MONGODB_DB_NAME_PROD
             JWT_SECRET JWT_EXPIRE_HOURS CORS_ORIGINS FRONTEND_URL ENABLE_DOCS ENABLE_LEGACY_SHIPMENT
             RAZORPAY_KEY_ID RAZORPAY_KEY_SECRET RAZORPAY_WEBHOOK_SECRET
@@ -83,20 +80,23 @@ jobs:
             SMTP_HOST SMTP_PORT SMTP_SECURE SMTP_USER SMTP_PASS
             MAIL_FROM MAIL_REPLY_TO OPS_INBOX ADMIN_INBOX SUPPORT_EMAIL APP_NAME
             GCS_BUCKET GCS_PROJECT_ID GCS_ENV_FOLDER GCS_CREDENTIALS_JSON
-          "
-          synced=0
-          for key in $KEYS; do
-            val="${!key-}"
-            if [ -n "$val" ]; then
-              railway variables set --skip-deploys \
-                --project "$RAILWAY_PROJECT_ID" \
-                --service "$RAILWAY_SERVICE_ID" \
-                --environment "$ENV_NAME" \
-                "$key=$val"
-              synced=$((synced + 1))
-            fi
-          done
-          echo "Synced $synced variables. Redeploying production so MONGODB_URI is picked up."
+          """.split()
+          names = []
+          with open(".env.keys", "w", encoding="utf-8") as f:
+              for key in keys:
+                  if os.environ.get(key, ""):
+                      f.write(key + "\n")
+                      names.append(key)
+          print(f"Backend .env keys to set: {len(names)}")
+          PY
+          while IFS= read -r key || [ -n "$key" ]; do
+            [ -z "$key" ] && continue
+            printf '%s' "${!key}" | railway variable set "$key" --stdin --skip-deploys \
+              --project "$RAILWAY_PROJECT_ID" \
+              --service "$RAILWAY_SERVICE_ID" \
+              --environment "$ENV_NAME"
+          done < .env.keys
+          echo "Backend variables set. Redeploying."
           railway redeploy \
             --project "$RAILWAY_PROJECT_ID" \
             --service "$RAILWAY_SERVICE_ID" \
