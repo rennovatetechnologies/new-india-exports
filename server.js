@@ -1,4 +1,9 @@
 require('dotenv').config();
+const dns = require('dns');
+// Railway has no outbound IPv6. Prefer A records so SMTP/GCS do not hit ENETUNREACH.
+if (typeof dns.setDefaultResultOrder === 'function') {
+  dns.setDefaultResultOrder('ipv4first');
+}
 const express = require('express');
 const cors = require('cors');
 const morgan = require('morgan');

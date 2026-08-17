@@ -17,6 +17,11 @@ function getTransporter() {
     host: config.smtp.host,
     port: config.smtp.port,
     secure: config.smtp.secure,
+    // Railway containers cannot reach Gmail over IPv6 (ENETUNREACH :::465).
+    family: 4,
+    connectionTimeout: 15000,
+    greetingTimeout: 15000,
+    socketTimeout: 20000,
     auth: {
       user: config.smtp.user,
       pass: config.smtp.pass,
@@ -171,6 +176,7 @@ async function sendOutbox(outboxId, attachments = [], actor) {
       tone: 'success',
     });
   } catch (e) {
+    console.warn('email send failed:', e.message);
     await db.collection('email_outbox').updateOne(
       { _id },
       {
