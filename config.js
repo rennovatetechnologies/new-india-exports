@@ -139,7 +139,8 @@ const config = {
         'virastra-504906-2c957972de4c.json';
       return path.isAbsolute(raw) ? raw : path.join(__dirname, raw);
     })(),
-    // APP_ENV=production → PROD/, otherwise DEV/
+    // Customer/ops files: APP_ENV=production → PROD/, otherwise DEV/.
+    // Plans + brochures are shared (Mongo dual-write; GCS SHARED/admin/brochures).
     envFolder: (
       process.env.GCS_ENV_FOLDER ||
       (process.env.APP_ENV === 'production' ? 'PROD' : 'DEV')

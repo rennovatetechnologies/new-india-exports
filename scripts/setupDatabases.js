@@ -172,7 +172,7 @@ async function main() {
     { upsert: true }
   );
 
-  // --- PROD (structure only, no seed) ---
+  // --- PROD (users/events stay empty; plans + brochures are shared via seed) ---
   console.log(`\n[prod] ${PROD_DB}`);
   const prod = client.db(PROD_DB);
   await ensureCollections(prod);
@@ -187,7 +187,7 @@ async function main() {
     },
     { upsert: true }
   );
-  console.log(`  ✓ structure ready (no demo seed)`);
+  console.log(`  ✓ structure ready (events not seeded; plans/brochures shared with nonprod)`);
 
   const listNonprod = (await nonprod.listCollections().toArray()).map((c) => c.name).sort();
   const listProd = (await prod.listCollections().toArray()).map((c) => c.name).sort();
@@ -197,7 +197,13 @@ async function main() {
   const plans = await nonprod.collection('plans').countDocuments();
   const events = await nonprod.collection('events').countDocuments();
   const users = await nonprod.collection('users').countDocuments();
+  const prodPlans = await prod.collection('plans').countDocuments();
+  const prodBrochures = await prod.collection('brochures').countDocuments({
+    $or: [{ deletedAt: null }, { deletedAt: { $exists: false } }],
+  });
+  const prodEvents = await prod.collection('events').countDocuments();
   console.log(`\nnonprod seed counts → plans=${plans} events=${events} users=${users}`);
+  console.log(`prod catalog counts → plans=${prodPlans} brochures=${prodBrochures} events=${prodEvents} (events stay separate)`);
 
   await mongoose.disconnect();
   await client.close();

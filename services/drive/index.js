@@ -4,6 +4,7 @@ const path = require('path');
 const crypto = require('crypto');
 const config = require('../../config');
 const { requireDb, getDb } = require('../../db');
+const { catalogUpsertFile } = require('../catalog');
 const { utcnow, safeCustomerKey } = require('../helpers');
 const { newFileId } = require('../ids');
 const { writeAudit } = require('../audit');
@@ -133,6 +134,13 @@ async function ensureEnvTree(envName) {
   }
 }
 
+async function ensureSharedTree() {
+  await ensurePrefix('SHARED');
+  await ensurePrefix(joinPrefix('SHARED', 'admin'));
+  await ensurePrefix(joinPrefix('SHARED', 'admin', 'brochures'));
+  await ensurePrefix(joinPrefix('SHARED', 'admin', 'catalogs'));
+}
+
 async function ensureRootTree() {
   if (!gcsConfigured()) {
     await ensureLocalDir(config.localDriveRoot);
@@ -144,6 +152,7 @@ async function ensureRootTree() {
   }
   await ensureEnvTree('DEV');
   await ensureEnvTree('PROD');
+  await ensureSharedTree();
   return {
     mode: 'gcs',
     bucket: config.gcs.bucket,
@@ -230,7 +239,8 @@ async function ensureBrochureFolder() {
     await ensureLocalDir(p);
     return `local:${p}`;
   }
-  return toGcsRef(joinPrefix(envRoot(), 'admin', 'brochures'));
+  await ensureSharedTree();
+  return toGcsRef(joinPrefix('SHARED', 'admin', 'brochures'));
 }
 
 async function uploadGcs({ folderId, buffer, fileName, mimeType, appProperties, fileId }) {
@@ -282,7 +292,7 @@ async function upload({ folderId, buffer, fileName, mimeType, appProperties = {}
     size = stored.size;
   }
 
-  await db.collection('files').insertOne({
+  const meta = {
     id: fileId,
     driveFileId,
     fileName,
@@ -294,7 +304,13 @@ async function upload({ folderId, buffer, fileName, mimeType, appProperties = {}
     appProperties,
     deletedAt: null,
     createdAt: utcnow(),
-  });
+  };
+
+  if (appProperties.kind === 'brochure') {
+    await catalogUpsertFile(meta);
+  } else {
+    await db.collection('files').insertOne(meta);
+  }
 
   await writeAudit({ email: appProperties.uploadedBy || '', role: appProperties.role || 'system' }, 'file.uploaded', {
     resource: { type: 'file', id: fileId },

@@ -1,8 +1,9 @@
 const fs = require('fs');
 const path = require('path');
-const { getDb, ensureIndexes } = require('../db');
+const { getDb, ensureIndexes, getCatalogDbs } = require('../db');
 const { utcnow } = require('../services/helpers');
 const drive = require('../services/drive');
+const { catalogUpdateOne } = require('../services/catalog');
 
 const SEED_ADMIN = {
   id: 'REQ-1042',
@@ -290,19 +291,38 @@ function brochurePublicPath(id) {
   return `/api/brochures/${encodeURIComponent(id)}/file`;
 }
 
-/** Upload catalog PDFs into Drive/local and upsert Mongo rows (idempotent). */
+function isSharedGcsRef(ref) {
+  return String(ref || '').startsWith('gcs:SHARED/');
+}
+
+function catalogTargets(fallbackDb) {
+  const dbs = getCatalogDbs();
+  return dbs.length ? dbs : fallbackDb ? [fallbackDb] : [];
+}
+
+async function findBrochureAcross(dbs, id) {
+  for (const db of dbs) {
+    const row = await db.collection('brochures').findOne({ id });
+    if (row) return row;
+  }
+  return null;
+}
+
+/** Upload catalog PDFs into SHARED GCS (or local) and upsert both env DBs. */
 async function seedDefaultBrochures(db) {
+  const targets = catalogTargets(db);
   let uploaded = 0;
   let restored = 0;
   for (const item of DEFAULT_BROCHURES) {
-    const existing = await db.collection('brochures').findOne({ id: item.id });
-    const hasFile = Boolean(existing?.fileId || existing?.driveFileId);
+    const existing = await findBrochureAcross(targets, item.id);
     const live = existing && !existing.deletedAt;
+    const onSharedGcs = isSharedGcsRef(existing?.driveFileId);
 
-    if (live && hasFile) continue;
+    if (live && existing?.fileId && onSharedGcs) continue;
 
-    if (existing?.deletedAt && hasFile) {
-      await db.collection('brochures').updateOne(
+    if (existing?.deletedAt && existing?.fileId && onSharedGcs) {
+      await catalogUpdateOne(
+        'brochures',
         { id: item.id },
         { $set: { deletedAt: null, updatedAt: utcnow() } }
       );
@@ -327,7 +347,8 @@ async function seedDefaultBrochures(db) {
     });
     const publicPath = brochurePublicPath(item.id);
     const now = utcnow();
-    await db.collection('brochures').updateOne(
+    await catalogUpdateOne(
+      'brochures',
       { id: item.id },
       {
         $set: {
@@ -357,7 +378,7 @@ async function seedDefaultBrochures(db) {
   }
   if (uploaded || restored) {
     console.log(
-      `Brochure PDFs ready: ${uploaded} uploaded, ${restored} restored`
+      `Brochure PDFs ready: ${uploaded} uploaded, ${restored} restored (shared catalog)`
     );
   }
 }
@@ -365,18 +386,22 @@ async function seedDefaultBrochures(db) {
 /** Soft-delete catalog rows that were inserted as demo placeholders. */
 async function purgeSeededMarketingCatalog(db) {
   const live = { $or: [{ deletedAt: null }, { deletedAt: { $exists: false } }] };
+  // Events stay per-environment — only purge mocks on the current DB.
   const events = await db.collection('events').updateMany(
     { id: { $in: DEFAULT_EVENTS.map((e) => e.id) }, ...live },
     { $set: { deletedAt: utcnow() } }
   );
-  const brochures = await db.collection('brochures').updateMany(
-    { id: { $in: MOCK_BROCHURE_IDS }, ...live },
-    { $set: { deletedAt: utcnow() } }
-  );
+  let brN = 0;
+  for (const d of catalogTargets(db)) {
+    const brochures = await d.collection('brochures').updateMany(
+      { id: { $in: MOCK_BROCHURE_IDS }, ...live },
+      { $set: { deletedAt: utcnow() } }
+    );
+    brN += brochures.modifiedCount || 0;
+  }
   const evN = events.modifiedCount || 0;
-  const brN = brochures.modifiedCount || 0;
   if (evN || brN) {
-    console.log(`Removed seeded mock catalog: ${evN} events, ${brN} brochures`);
+    console.log(`Removed seeded mock catalog: ${evN} events (this env), ${brN} brochures (shared)`);
   }
 }
 
@@ -440,37 +465,57 @@ async function seedIfEmpty() {
     console.log(`Seeded staff ${staff.role}: ${staff.email}`);
   }
 
-  if ((await db.collection('plans').countDocuments({})) === 0) {
-    await db.collection('plans').insertMany(DEFAULT_PLANS.map((p) => ({ ...p, createdAt: utcnow() })));
-    console.log('Seeded plans');
-  } else {
-    // Refresh official catalog copy without overwriting admin price/discount/featured.
-    for (const plan of DEFAULT_PLANS) {
-      const existing = await db.collection('plans').findOne({ id: plan.id });
-      if (!existing) {
-        await db.collection('plans').insertOne({ ...plan, createdAt: utcnow() });
-        console.log(`Inserted missing plan ${plan.id}`);
-        continue;
-      }
-      await db.collection('plans').updateOne(
-        { id: plan.id },
-        {
-          $set: {
-            name: plan.name,
-            tagline: plan.tagline,
-            description: plan.description,
-            timeline: plan.timeline,
-            features: plan.features,
-            marketingFeatures: plan.marketingFeatures,
-            workflowStages: plan.workflowStages,
-            kycDocs: plan.kycDocs,
-            updatedAt: utcnow(),
-          },
-        }
-      );
+  const planTargets = catalogTargets(db);
+  let sourcePlans = [];
+  for (const d of planTargets) {
+    const rows = await d
+      .collection('plans')
+      .find({ $or: [{ deletedAt: null }, { deletedAt: { $exists: false } }] })
+      .toArray();
+    if (rows.length) {
+      sourcePlans = rows;
+      break;
     }
-    console.log('Refreshed plan catalog copy');
   }
+  if (!sourcePlans.length) {
+    sourcePlans = DEFAULT_PLANS.map((p) => ({ ...p, createdAt: utcnow() }));
+    console.log('Seeded default plans into shared catalog');
+  }
+  for (const plan of sourcePlans) {
+    const { _id, createdAt, ...doc } = plan;
+    const id = doc.id;
+    if (!id) continue;
+    await catalogUpdateOne(
+      'plans',
+      { id },
+      {
+        $set: { ...doc, id, deletedAt: null, updatedAt: utcnow() },
+        $setOnInsert: { createdAt: createdAt || utcnow() },
+      },
+      { upsert: true }
+    );
+  }
+  // Keep official marketing copy in sync without clobbering admin price/discount/featured.
+  for (const plan of DEFAULT_PLANS) {
+    await catalogUpdateOne(
+      'plans',
+      { id: plan.id },
+      {
+        $set: {
+          name: plan.name,
+          tagline: plan.tagline,
+          description: plan.description,
+          timeline: plan.timeline,
+          features: plan.features,
+          marketingFeatures: plan.marketingFeatures,
+          workflowStages: plan.workflowStages,
+          kycDocs: plan.kycDocs,
+          updatedAt: utcnow(),
+        },
+      }
+    );
+  }
+  console.log(`Shared plan catalog ready (${sourcePlans.length} plans, both envs)`);
 
   // Placeholder gallery rows stay purged. Real PDF catalogues are stored on the backend.
   await purgeSeededMarketingCatalog(db);

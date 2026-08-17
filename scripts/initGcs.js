@@ -12,7 +12,7 @@ async function main() {
     console.error('Inline credentials:', Boolean(config.gcs.credentials));
     process.exit(1);
   }
-  console.log(`Initializing gs://${config.gcs.bucket} with DEV/ and PROD/ trees…`);
+  console.log(`Initializing gs://${config.gcs.bucket} with DEV/, PROD/, and SHARED/ trees…`);
   const tree = await drive.ensureRootTree();
   console.log('Ready:', tree);
   console.log('Uploads in this process will go under', tree.root);

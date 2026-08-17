@@ -1,5 +1,6 @@
 const express = require('express');
 const { requireDb } = require('../db');
+const { catalogUpdateOne } = require('../services/catalog');
 const { requireAdmin, requireRoles, protect, optionalAuth } = require('../middleware/auth');
 const { validateBody } = require('../middleware/validate');
 const { asyncHandler } = require('../utils/asyncHandler');
@@ -850,7 +851,7 @@ router.post(
   optionalFile(uploadBrochure),
   validateBody(brochureUpsertSchema),
   asyncHandler(async (req, res) => {
-    const db = requireDb();
+    requireDb();
     const id = req.body.id || `BR-${Date.now().toString(36).toUpperCase()}`;
     const meta = brochureMetaFrom(req.body);
     let fileFields = {};
@@ -871,7 +872,7 @@ router.post(
       updatedAt: utcnow(),
       deletedAt: null,
     };
-    await db.collection('brochures').updateOne({ id }, { $set: doc }, { upsert: true });
+    await catalogUpdateOne('brochures', { id }, { $set: doc }, { upsert: true });
     await writeAudit(actorFromReq(req), 'brochure.created', {
       resource: { type: 'brochure', id },
     });
@@ -898,7 +899,7 @@ router.put(
     } else if (req.body.fileUrl != null) {
       updates.fileUrl = req.body.fileUrl;
     }
-    await db.collection('brochures').updateOne({ id }, { $set: updates });
+    await catalogUpdateOne('brochures', { id }, { $set: updates });
     const doc = await db.collection('brochures').findOne({ id });
     return res.json({ success: true, data: publicBrochure(doc) });
   })
@@ -908,10 +909,12 @@ router.delete(
   '/brochures/:id',
   requireRoles('admin', 'operations'),
   asyncHandler(async (req, res) => {
-    const db = requireDb();
-    await db
-      .collection('brochures')
-      .updateOne({ id: req.params.id }, { $set: { deletedAt: utcnow() } });
+    requireDb();
+    await catalogUpdateOne(
+      'brochures',
+      { id: req.params.id },
+      { $set: { deletedAt: utcnow() } }
+    );
     return res.json({ success: true, ok: true });
   })
 );

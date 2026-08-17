@@ -34,6 +34,28 @@ function getDb() {
   return mongoose.connection.db;
 }
 
+function getMongoClient() {
+  if (!mongoose.connection || mongoose.connection.readyState !== 1) return null;
+  if (typeof mongoose.connection.getClient === 'function') {
+    return mongoose.connection.getClient();
+  }
+  return mongoose.connection.db?.client || null;
+}
+
+/** Plans + brochures are shared across nonprod and prod. Events stay per-database. */
+function getCatalogDbs() {
+  const client = getMongoClient();
+  if (!client) return [];
+  const names = [];
+  const seen = new Set();
+  for (const name of [config.mongodbDbNameNonprod, config.mongodbDbNameProd, config.mongodbDbName]) {
+    if (!name || seen.has(name)) continue;
+    seen.add(name);
+    names.push(name);
+  }
+  return names.map((name) => client.db(name));
+}
+
 function requireDb() {
   const db = getDb();
   if (!db) {
@@ -169,4 +191,13 @@ async function ensureIndexes() {
   }
 }
 
-module.exports = { connectDb, getDb, requireDb, getFs, ensureIndexes, ensureAuditLogTtl };
+module.exports = {
+  connectDb,
+  getDb,
+  requireDb,
+  getMongoClient,
+  getCatalogDbs,
+  getFs,
+  ensureIndexes,
+  ensureAuditLogTtl,
+};

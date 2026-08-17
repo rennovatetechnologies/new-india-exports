@@ -1,5 +1,6 @@
 const express = require('express');
 const { requireDb } = require('../db');
+const { catalogUpdateOne } = require('../services/catalog');
 const { requireAdmin, optionalAuth } = require('../middleware/auth');
 const { validateBody } = require('../middleware/validate');
 const { asyncHandler } = require('../utils/asyncHandler');
@@ -69,7 +70,7 @@ router.post(
   requireAdmin,
   validateBody(planCreateSchema),
   asyncHandler(async (req, res) => {
-    const db = requireDb();
+    requireDb();
     const id = String(req.body.id || '').trim();
     const doc = {
       id,
@@ -88,7 +89,7 @@ router.post(
       updatedAt: utcnow(),
       createdAt: utcnow(),
     };
-    await db.collection('plans').updateOne({ id }, { $set: doc }, { upsert: true });
+    await catalogUpdateOne('plans', { id }, { $set: doc }, { upsert: true });
     await writeAudit(actorFromReq(req), 'plan.created', {
       resource: { type: 'plan', id },
       tone: 'success',
@@ -131,7 +132,7 @@ router.put(
       deletedAt: null,
       createdAt: prev.createdAt || utcnow(),
     };
-    await db.collection('plans').updateOne({ id }, { $set: doc });
+    await catalogUpdateOne('plans', { id }, { $set: doc });
     if (
       req.body.discountPercent != null &&
       clampDiscount(prev.discountPercent) !== discountPercent
@@ -152,10 +153,12 @@ router.delete(
   '/plans/:planId',
   requireAdmin,
   asyncHandler(async (req, res) => {
-    const db = requireDb();
-    await db
-      .collection('plans')
-      .updateOne({ id: req.params.planId }, { $set: { deletedAt: utcnow() } });
+    requireDb();
+    await catalogUpdateOne(
+      'plans',
+      { id: req.params.planId },
+      { $set: { deletedAt: utcnow() } }
+    );
     await writeAudit(actorFromReq(req), 'plan.deleted', {
       resource: { type: 'plan', id: req.params.planId },
     });
