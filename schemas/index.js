@@ -70,9 +70,12 @@ const planUpdateSchema = z.object({
 });
 
 const createOrderSchema = z.object({
-  purpose: z.enum(['plan', 'event', 'workshop', 'custom']).optional(),
+  purpose: z
+    .enum(['plan', 'plan_upgrade', 'event', 'workshop', 'booking', 'custom'])
+    .optional(),
   planId: optionalString(80),
   eventId: optionalString(80),
+  sku: optionalString(80),
   email: emailSchema.optional(),
   amount: z.coerce.number().min(0).optional(),
   currency: z.string().trim().max(8).optional(),

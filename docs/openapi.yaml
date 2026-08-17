@@ -312,8 +312,10 @@ components:
           type: string
           enum:
             - plan
+            - plan_upgrade
             - event
             - workshop
+            - booking
             - custom
         planId:
           type: string

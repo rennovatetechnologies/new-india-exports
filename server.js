@@ -40,7 +40,11 @@ app.use(
   })
 );
 
-app.use(morgan(config.isProduction ? 'combined' : 'dev'));
+app.use(
+  morgan(config.isProduction ? 'combined' : 'dev', {
+    skip: (req) => req.path === '/health',
+  })
+);
 
 // Razorpay webhook needs raw body BEFORE json parser
 app.post('/api/webhooks/razorpay', express.raw({ type: 'application/json' }), async (req, res) => {
@@ -86,7 +90,7 @@ app.use(express.json({ limit: '2mb' }));
 app.use(express.urlencoded({ extended: true }));
 
 app.use((req, res, next) => {
-  if (!config.isProduction) {
+  if (!config.isProduction && req.path !== '/health') {
     console.log(`${new Date().toISOString()} - ${req.method} ${req.path}`);
   }
   next();

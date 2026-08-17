@@ -66,9 +66,7 @@ function emptyCaseDoc(email, userId, caseId) {
     kycMissingDocIds: [],
     stageIndex: 0,
     stageNotes: {},
-    /** Frozen at purchase/upgrade — refreshed from the live plan catalog when that pack changes. */
     workflowStages: [],
-    kycDocs: [],
     documents: [],
     docRequests: [],
     opsEmail: null,
@@ -108,23 +106,7 @@ function normalizeKycDoc(d) {
   return { id, label, required: d.required !== false };
 }
 
-function packFingerprint(stages, kycDocs) {
-  const s = (stages || []).map((x) => x.id).join('|');
-  const k = (kycDocs || []).map((x) => `${x.id}:${x.required === false ? '0' : '1'}`).join('|');
-  return `${s}::${k}`;
-}
-
-function preservedStageIndex(oldStages, oldIndex, nextStages) {
-  const completedIds = new Set((oldStages || []).slice(0, Math.max(0, Number(oldIndex) || 0)).map((s) => s.id));
-  let idx = 0;
-  for (const s of nextStages || []) {
-    if (completedIds.has(s.id)) idx += 1;
-    else break;
-  }
-  return idx;
-}
-
-/** Build the stage list that belongs on a case (previous plans ∪ current). */
+/** Live catalog stages for this case (previous plans ∪ current). */
 async function buildWorkflowStagesForCase(caseDoc) {
   const db = requireDb();
   const prevIds = Array.isArray(caseDoc?.previousPlanIds) ? caseDoc.previousPlanIds : [];
@@ -150,7 +132,7 @@ async function liveKycDocsForCase(caseDoc) {
   return (plan?.kycDocs || []).map(normalizeKycDoc).filter(Boolean);
 }
 
-/** True when every snapshotted workflow stage has been marked complete. */
+/** True when every current catalog stage has been marked complete. */
 function isWorkflowComplete(c) {
   const stages = Array.isArray(c?.workflowStages) ? c.workflowStages : [];
   if (!stages.length) return false;
@@ -158,44 +140,12 @@ function isWorkflowComplete(c) {
 }
 
 /**
- * Ensure case responses always include workflowStages + kycDocs from the live plan catalog.
- * Persists a snapshot so every role sees the same lists.
+ * Attach live plan catalog KYC + stages on the response. Testing: no case snapshot writes.
  */
 async function withWorkflowStages(doc) {
   if (!doc) return null;
-  let stages = Array.isArray(doc.workflowStages) ? doc.workflowStages.map(normalizeStage).filter(Boolean) : [];
-  let kycDocs = Array.isArray(doc.kycDocs) ? doc.kycDocs.map(normalizeKycDoc).filter(Boolean) : [];
-  const hasPlan = Boolean(doc.paidPlanId || doc.planId);
-  if (hasPlan) {
-    const liveStages = await buildWorkflowStagesForCase(doc);
-    const liveKyc = await liveKycDocsForCase(doc);
-    const nextStages = liveStages.length ? liveStages : stages;
-    const nextKyc = liveKyc.length ? liveKyc : kycDocs;
-    const changed = packFingerprint(stages, kycDocs) !== packFingerprint(nextStages, nextKyc);
-    if (changed && doc.id) {
-      const nextIndex = preservedStageIndex(stages, doc.stageIndex, nextStages);
-      try {
-        await requireDb()
-          .collection('customer_cases')
-          .updateOne(
-            { id: doc.id },
-            {
-              $set: {
-                workflowStages: nextStages,
-                kycDocs: nextKyc,
-                stageIndex: nextIndex,
-                updatedAt: utcnow(),
-              },
-            }
-          );
-      } catch (_) {
-        /* best-effort snapshot */
-      }
-      doc = { ...doc, stageIndex: nextIndex };
-    }
-    stages = nextStages;
-    kycDocs = nextKyc;
-  }
+  const stages = await buildWorkflowStagesForCase(doc);
+  const kycDocs = await liveKycDocsForCase(doc);
   const merged = { ...doc, workflowStages: stages, kycDocs };
   const pub = publicCase(merged);
   if (
@@ -351,9 +301,7 @@ async function updateCase(caseId, patch, { actor } = {}) {
       patch.planId != null ||
       patch.planExpiresAt != null ||
       patch.paidPlanId != null ||
-      patch.stageIndex != null ||
-      patch.workflowStages != null ||
-      patch.kycDocs != null)
+      patch.stageIndex != null)
   ) {
     const cur = await db.collection('customer_cases').findOne({ id: caseId });
     if (cur) $set.status = deriveStatus({ ...cur, ...patch });
@@ -440,14 +388,6 @@ async function markPlanPaid(caseDoc, { planId, amountPaid, paymentId, purpose },
   const paidAt = utcnow();
   const expiresAt = addPlanValidity(paidAt);
 
-  const workflowStages = await buildWorkflowStagesForCase({
-    ...caseDoc,
-    paidPlanId: plan.id,
-    planId: plan.id,
-    previousPlanIds: prevIds,
-  });
-  const kycDocs = (plan.kycDocs || []).map(normalizeKycDoc).filter(Boolean);
-
   return updateCase(
     caseDoc.id,
     {
@@ -462,8 +402,6 @@ async function markPlanPaid(caseDoc, { planId, amountPaid, paymentId, purpose },
       kycStatus,
       opsEmail,
       opsName,
-      workflowStages,
-      kycDocs,
       status: kycStatus === KYC_STATUS.APPROVED ? CASE_STATUS.ACTIVE : CASE_STATUS.KYC_INCOMPLETE,
     },
     { actor }

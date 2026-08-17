@@ -6,6 +6,7 @@
  */
 require('dotenv').config();
 const { MongoClient } = require('mongodb');
+const { ensureAuditLogTtl } = require('../db');
 
 const NONPROD_DB = process.env.MONGODB_DB_NAME_NONPROD || 'virastra_nonprod';
 const PROD_DB = process.env.MONGODB_DB_NAME_PROD || 'virastra_prod';
@@ -103,8 +104,7 @@ async function ensureIndexes(db) {
   await db.collection('invoices').createIndex({ paymentId: 1 }, { unique: true });
   await db.collection('invoices').createIndex({ invoiceNumber: 1 }, { unique: true });
   await db.collection('orders').createIndex({ razorpayOrderId: 1 }, { unique: true });
-  await db.collection('audit_logs').createIndex({ at: -1 });
-  await db.collection('audit_logs').createIndex({ createdAt: -1 });
+  await ensureAuditLogTtl(db);
   await db.collection('email_outbox').createIndex({ status: 1, updatedAt: 1 });
   await db.collection('idempotency_keys').createIndex({ keyHash: 1 }, { unique: true });
   try {

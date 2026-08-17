@@ -53,6 +53,41 @@ function getFs(bucket = 'fs') {
   return new GridFSBucket(db, { bucketName: bucket });
 }
 
+const AUDIT_TTL_INDEX = 'audit_logs_ttl';
+
+/** Keep audit_logs for AUDIT_LOG_TTL_DAYS (default 7). Drops older rows immediately + via Mongo TTL. */
+async function ensureAuditLogTtl(db, ttlDays = config.auditLogTtlDays) {
+  if (!db) return;
+  const days = Math.max(1, Number(ttlDays) || 7);
+  const expireAfterSeconds = days * 24 * 60 * 60;
+  const col = db.collection('audit_logs');
+
+  try {
+    const indexes = await col.indexes();
+    for (const idx of indexes) {
+      if (idx.name === '_id_') continue;
+      const keys = Object.keys(idx.key || {});
+      const onAt = keys.length === 1 && keys[0] === 'at';
+      const wrongTtl =
+        idx.name === AUDIT_TTL_INDEX && idx.expireAfterSeconds !== expireAfterSeconds;
+      if (onAt && (idx.name !== AUDIT_TTL_INDEX || wrongTtl)) {
+        await col.dropIndex(idx.name).catch(() => {});
+      }
+    }
+  } catch (_) {}
+
+  await col.createIndex({ at: 1 }, { name: AUDIT_TTL_INDEX, expireAfterSeconds });
+  await col.createIndex({ createdAt: -1 });
+
+  const cutoff = new Date(Date.now() - expireAfterSeconds * 1000);
+  const purged = await col.deleteMany({
+    $or: [{ at: { $lt: cutoff } }, { at: { $exists: false }, createdAt: { $lt: cutoff } }],
+  });
+  if (purged.deletedCount) {
+    console.log(`Purged ${purged.deletedCount} audit_logs older than ${days} days`);
+  }
+}
+
 async function ensureIndexes() {
   const db = getDb();
   if (!db) {
@@ -114,8 +149,7 @@ async function ensureIndexes() {
     await db.collection('invoices').createIndex({ paymentId: 1 }, { unique: true });
     await db.collection('invoices').createIndex({ invoiceNumber: 1 }, { unique: true });
     await db.collection('orders').createIndex({ razorpayOrderId: 1 }, { unique: true });
-    await db.collection('audit_logs').createIndex({ at: -1 });
-    await db.collection('audit_logs').createIndex({ createdAt: -1 });
+    await ensureAuditLogTtl(db);
     await db.collection('email_outbox').createIndex({ status: 1, updatedAt: 1 });
     await db.collection('idempotency_keys').createIndex({ keyHash: 1 }, { unique: true });
     try {
@@ -135,4 +169,4 @@ async function ensureIndexes() {
   }
 }
 
-module.exports = { connectDb, getDb, requireDb, getFs, ensureIndexes };
+module.exports = { connectDb, getDb, requireDb, getFs, ensureIndexes, ensureAuditLogTtl };

@@ -59,8 +59,6 @@ async function resolveCase(caseIdOrEmail) {
 }
 
 async function planKycDocs(caseDoc) {
-  const snap = Array.isArray(caseDoc?.kycDocs) ? caseDoc.kycDocs : [];
-  if (snap.length) return snap;
   const db = requireDb();
   const plan = await db.collection('plans').findOne({ id: caseDoc.paidPlanId || caseDoc.planId });
   return plan?.kycDocs || [];
