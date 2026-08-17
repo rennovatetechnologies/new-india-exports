@@ -25,10 +25,9 @@ function parseJsonEnv(name) {
   }
 }
 
-function railwayHttpsUrl() {
-  const domain = process.env.RAILWAY_PUBLIC_DOMAIN;
-  return domain ? `https://${String(domain).replace(/\/$/, '')}` : '';
-}
+/** Stable Railway production hosts (custom domain can override via env). */
+const FRONTEND_PRODUCTION_URL = 'https://india-exports-hub-53-production.up.railway.app';
+const onRailway = Boolean(process.env.RAILWAY_ENVIRONMENT || process.env.RAILWAY_PUBLIC_DOMAIN);
 
 const seller = {
   legalName: 'New India Export',
@@ -46,7 +45,7 @@ const seller = {
 };
 
 const config = {
-  appEnv: process.env.APP_ENV || 'development',
+  appEnv: process.env.APP_ENV || (onRailway ? 'production' : 'development'),
   mongodbUri: process.env.MONGODB_URI || null,
   // Prefer explicit MONGODB_DB_NAME; else nonprod for development, prod for production.
   mongodbDbName:
@@ -59,7 +58,8 @@ const config = {
   jwtSecret: process.env.JWT_SECRET || 'dev-only-change-me-in-production',
   jwtExpireHours: parseInt(process.env.JWT_EXPIRE_HOURS || '2', 10),
   corsOrigins: splitOrigins(
-    process.env.CORS_ORIGINS || 'http://localhost:5173,http://127.0.0.1:5173'
+    process.env.CORS_ORIGINS ||
+      `http://localhost:5173,http://127.0.0.1:5173,${FRONTEND_PRODUCTION_URL}`
   ),
   razorpayKeyId: process.env.RAZORPAY_KEY_ID || null,
   razorpayKeySecret: process.env.RAZORPAY_KEY_SECRET || null,
@@ -85,10 +85,9 @@ const config = {
   installmentWindowDays: parseInt(process.env.INSTALLMENT_WINDOW_DAYS || '30', 10),
   frontendUrl: (
     process.env.FRONTEND_URL ||
-    railwayHttpsUrl() ||
-    'http://localhost:5173'
+    (onRailway ? FRONTEND_PRODUCTION_URL : 'http://localhost:5173')
   ).replace(/\/$/, ''),
-  enableDocs: envBool('ENABLE_DOCS', false),
+  enableDocs: envBool('ENABLE_DOCS', true),
   enableLegacyShipment: envBool('ENABLE_LEGACY_SHIPMENT', false),
 
   smtp: {
