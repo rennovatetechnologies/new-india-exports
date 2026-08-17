@@ -1,41 +1,106 @@
 const fs = require('fs');
 const fsp = require('fs/promises');
 const path = require('path');
-const { Readable } = require('stream');
+const crypto = require('crypto');
 const config = require('../../config');
 const { requireDb, getDb } = require('../../db');
 const { utcnow, safeCustomerKey } = require('../helpers');
 const { newFileId } = require('../ids');
 const { writeAudit } = require('../audit');
 
-let driveClient = null;
-let driveAuthMode = null; // 'oauth' | 'service_account'
+const GCS_SCHEME = 'gcs:';
 
-function oauthConfigured() {
-  const g = config.googleDrive;
-  return Boolean(g.oauthClientId && g.oauthClientSecret && g.oauthRefreshToken && g.rootFolderId);
-}
+let gcsBucket = null;
 
-function serviceAccountConfigured() {
-  const g = config.googleDrive;
-  // Service accounts have no My Drive storage quota — Shared Drive id is required.
-  return Boolean(g.clientEmail && g.privateKey && g.rootFolderId && g.sharedDriveId);
+function gcsConfigured() {
+  const g = config.gcs || {};
+  if (!g.bucket) return false;
+  if (g.credentials && g.credentials.client_email) return true;
+  return Boolean(g.keyFile && fs.existsSync(g.keyFile));
 }
 
 function driveConfigured() {
-  return oauthConfigured() || serviceAccountConfigured();
+  return gcsConfigured();
 }
 
 function driveMode() {
-  if (oauthConfigured()) return 'oauth';
-  if (serviceAccountConfigured()) return 'service_account';
-  return 'local';
+  return gcsConfigured() ? 'gcs' : 'local';
 }
 
-function isDriveQuotaError(err) {
-  const status = err?.status || err?.code || err?.response?.status;
-  const msg = String(err?.message || err?.errors?.[0]?.message || '');
-  return status === 403 && /storage quota|shared drives|Service Accounts/i.test(msg);
+function envRoot() {
+  const folder = String(config.gcs?.envFolder || 'DEV').toUpperCase();
+  return folder === 'PROD' ? 'PROD' : 'DEV';
+}
+
+function isGcsRef(id) {
+  return String(id || '').startsWith(GCS_SCHEME);
+}
+
+function toGcsRef(objectPath) {
+  return `${GCS_SCHEME}${String(objectPath).replace(/^\/+|\/+$/g, '')}`;
+}
+
+function fromGcsRef(ref) {
+  return String(ref || '').startsWith(GCS_SCHEME) ? ref.slice(GCS_SCHEME.length) : String(ref || '');
+}
+
+function joinPrefix(...parts) {
+  return parts
+    .map((p) => String(p || '').replace(/^\/+|\/+$/g, ''))
+    .filter(Boolean)
+    .join('/');
+}
+
+function safeFileName(fileName) {
+  return String(fileName || 'file')
+    .replace(/[^\w.\-]+/g, '_')
+    .slice(0, 180) || 'file';
+}
+
+function stringifyMeta(obj) {
+  const out = {};
+  for (const [k, v] of Object.entries(obj || {})) {
+    if (v == null || v === '') continue;
+    out[String(k).slice(0, 128)] = String(v).slice(0, 256);
+  }
+  return out;
+}
+
+function md5Hex(buffer) {
+  return crypto.createHash('md5').update(buffer).digest('hex');
+}
+
+async function getGcsBucket() {
+  if (!gcsConfigured()) return null;
+  if (gcsBucket) return gcsBucket;
+  const { Storage } = require('@google-cloud/storage');
+  const storageOpts = { projectId: config.gcs.projectId };
+  if (config.gcs.credentials) storageOpts.credentials = config.gcs.credentials;
+  else storageOpts.keyFilename = config.gcs.keyFile;
+  const storage = new Storage(storageOpts);
+  gcsBucket = storage.bucket(config.gcs.bucket);
+  return gcsBucket;
+}
+
+async function ensureLocalDir(dir) {
+  await fsp.mkdir(dir, { recursive: true });
+  return dir;
+}
+
+/** GCS has no real folders — a zero-byte object with a trailing slash shows up in the console. */
+async function ensurePrefix(objectPrefix) {
+  const bucket = await getGcsBucket();
+  const name = `${String(objectPrefix).replace(/\/+$/g, '')}/`;
+  const file = bucket.file(name);
+  const [exists] = await file.exists();
+  if (!exists) {
+    await file.save(Buffer.alloc(0), {
+      resumable: false,
+      contentType: 'application/x-www-form-urlencoded;charset=UTF-8',
+      metadata: { metadata: { folder: 'true' } },
+    });
+  }
+  return toGcsRef(name.slice(0, -1));
 }
 
 async function writeLocalFile({ folderId, buffer, fileName }) {
@@ -44,115 +109,32 @@ async function writeLocalFile({ folderId, buffer, fileName }) {
     : path.join(config.localDriveRoot, '_uploads');
   await ensureLocalDir(dir);
   const fileId = await newFileId();
-  const safeName = `${fileId}_${String(fileName).replace(/[^\w.\-]+/g, '_')}`;
+  const safeName = `${fileId}_${safeFileName(fileName)}`;
   const full = path.join(dir, safeName);
   await fsp.writeFile(full, buffer);
-  return { fileId, driveFileId: `local:${full}`, size: buffer.length };
+  return { fileId, driveFileId: `local:${full}`, size: buffer.length, md5: md5Hex(buffer) };
 }
 
-async function getGoogleDrive() {
-  if (!driveConfigured()) return null;
-  if (driveClient) return driveClient;
-  const { google } = require('googleapis');
-  const g = config.googleDrive;
+const ROOT_FOLDERS = [
+  'customers',
+  'operations',
+  'admin',
+  'admin/brochures',
+  'admin/catalogs',
+  'admin/invoices',
+  'admin/system',
+  '_quarantine',
+];
 
-  if (oauthConfigured()) {
-    const oauth2 = new google.auth.OAuth2(g.oauthClientId, g.oauthClientSecret, g.oauthRedirectUri);
-    oauth2.setCredentials({ refresh_token: g.oauthRefreshToken });
-    driveClient = google.drive({ version: 'v3', auth: oauth2 });
-    driveAuthMode = 'oauth';
-    return driveClient;
+async function ensureEnvTree(envName) {
+  await ensurePrefix(envName);
+  for (const folder of ROOT_FOLDERS) {
+    await ensurePrefix(joinPrefix(envName, folder));
   }
-
-  const auth = new google.auth.JWT({
-    email: g.clientEmail,
-    key: g.privateKey,
-    scopes: ['https://www.googleapis.com/auth/drive'],
-  });
-  driveClient = google.drive({ version: 'v3', auth });
-  driveAuthMode = 'service_account';
-  return driveClient;
-}
-
-async function ensureLocalDir(dir) {
-  await fsp.mkdir(dir, { recursive: true });
-  return dir;
-}
-
-async function cacheFolder(key, folderId) {
-  const db = getDb();
-  if (!db) return;
-  await db.collection('drive_folders').updateOne(
-    { key },
-    { $set: { key, folderId, updatedAt: utcnow() }, $setOnInsert: { createdAt: utcnow() } },
-    { upsert: true }
-  );
-}
-
-async function getCachedFolder(key) {
-  const db = getDb();
-  if (!db) return null;
-  const row = await db.collection('drive_folders').findOne({ key });
-  const id = row?.folderId || null;
-  if (!id) return null;
-  // Ignore stale cache when storage mode flips between local and Google.
-  if (String(id).startsWith('local:') && driveConfigured()) return null;
-  if (!String(id).startsWith('local:') && !driveConfigured()) return null;
-  return id;
-}
-
-async function googleCreateFolder(name, parentId) {
-  const drive = await getGoogleDrive();
-  const meta = {
-    name,
-    mimeType: 'application/vnd.google-apps.folder',
-    parents: parentId ? [parentId] : undefined,
-  };
-  const params = {
-    resource: meta,
-    fields: 'id, name',
-    supportsAllDrives: true,
-  };
-  const res = await drive.files.create(params);
-  return res.data.id;
-}
-
-async function ensureChildFolder(cacheKey, name, parentId) {
-  const cached = await getCachedFolder(cacheKey);
-  if (cached) return cached;
-  const drive = await getGoogleDrive();
-  if (!drive) {
-    const localPath = path.join(config.localDriveRoot, cacheKey.replace(/:/g, path.sep));
-    await ensureLocalDir(localPath);
-    await cacheFolder(cacheKey, `local:${localPath}`);
-    return `local:${localPath}`;
-  }
-  // search existing
-  const q = `name='${name.replace(/'/g, "\\'")}' and '${parentId}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false`;
-  const listParams = {
-    q,
-    fields: 'files(id,name)',
-    spaces: 'drive',
-  };
-  if (config.googleDrive.sharedDriveId) {
-    listParams.supportsAllDrives = true;
-    listParams.includeItemsFromAllDrives = true;
-    listParams.corpora = 'drive';
-    listParams.driveId = config.googleDrive.sharedDriveId;
-  }
-  const listed = await drive.files.list(listParams);
-  const existing = listed.data.files?.[0]?.id;
-  if (existing) {
-    await cacheFolder(cacheKey, existing);
-    return existing;
-  }
-  const id = await googleCreateFolder(name, parentId);
-  await cacheFolder(cacheKey, id);
-  return id;
 }
 
 async function ensureRootTree() {
-  if (!driveConfigured()) {
+  if (!gcsConfigured()) {
     await ensureLocalDir(config.localDriveRoot);
     await ensureLocalDir(path.join(config.localDriveRoot, 'customers'));
     await ensureLocalDir(path.join(config.localDriveRoot, 'admin', 'brochures'));
@@ -160,32 +142,42 @@ async function ensureRootTree() {
     await ensureLocalDir(path.join(config.localDriveRoot, '_quarantine'));
     return { mode: 'local', root: config.localDriveRoot };
   }
-  const root = config.googleDrive.rootFolderId;
-  const customers = await ensureChildFolder('root:customers', 'customers', root);
-  const operations = await ensureChildFolder('root:operations', 'operations', root);
-  const admin = await ensureChildFolder('root:admin', 'admin', root);
-  await ensureChildFolder('root:admin:brochures', 'brochures', admin);
-  await ensureChildFolder('root:admin:invoices', 'invoices', admin);
-  await ensureChildFolder('root:admin:catalogs', 'catalogs', admin);
-  await ensureChildFolder('root:admin:system', 'system', admin);
-  await ensureChildFolder('root:quarantine', '_quarantine', root);
-  return { mode: 'google', root, customers, operations, admin };
+  await ensureEnvTree('DEV');
+  await ensureEnvTree('PROD');
+  return {
+    mode: 'gcs',
+    bucket: config.gcs.bucket,
+    env: envRoot(),
+    root: `gs://${config.gcs.bucket}/${envRoot()}`,
+  };
 }
 
 async function ensureCustomerFolder(customerKey) {
   await ensureRootTree();
   const key = safeCustomerKey(customerKey);
-  if (!driveConfigured()) {
+  if (!gcsConfigured()) {
     const p = path.join(config.localDriveRoot, 'customers', key);
     await ensureLocalDir(path.join(p, 'profile'));
     await ensureLocalDir(path.join(p, 'kyc'));
     await ensureLocalDir(path.join(p, 'cases'));
-    const id = `local:${p}`;
-    await cacheFolder(`customer:${key}`, id);
-    return id;
+    return `local:${p}`;
   }
-  const customers = await getCachedFolder('root:customers');
-  return ensureChildFolder(`customer:${key}`, key, customers);
+  const base = joinPrefix(envRoot(), 'customers', key);
+  await ensurePrefix(base);
+  await ensurePrefix(joinPrefix(base, 'profile'));
+  await ensurePrefix(joinPrefix(base, 'kyc'));
+  await ensurePrefix(joinPrefix(base, 'cases'));
+  return toGcsRef(base);
+}
+
+async function ensureProfileFolder(customerKey) {
+  const cust = await ensureCustomerFolder(customerKey);
+  if (String(cust).startsWith('local:')) {
+    const p = path.join(cust.slice(6), 'profile');
+    await ensureLocalDir(p);
+    return `local:${p}`;
+  }
+  return toGcsRef(joinPrefix(fromGcsRef(cust), 'profile'));
 }
 
 async function ensureCaseFolders(customerKey, caseId) {
@@ -195,58 +187,71 @@ async function ensureCaseFolders(customerKey, caseId) {
     const caseBase = path.join(base, 'cases', caseId);
     await ensureLocalDir(path.join(caseBase, 'from-customer'));
     await ensureLocalDir(path.join(caseBase, 'from-ops'));
-    const kycId = `local:${path.join(base, 'kyc')}`;
     return {
       customerId: cust,
-      kycId,
+      kycId: `local:${path.join(base, 'kyc')}`,
+      profileId: `local:${path.join(base, 'profile')}`,
       fromCustomerId: `local:${path.join(caseBase, 'from-customer')}`,
       fromOpsId: `local:${path.join(caseBase, 'from-ops')}`,
     };
   }
-  const casesParent = await ensureChildFolder(
-    `customer:${safeCustomerKey(customerKey)}:cases`,
-    'cases',
-    cust
-  );
-  const caseFolder = await ensureChildFolder(
-    `case:${caseId}`,
-    caseId,
-    casesParent
-  );
-  const fromCustomerId = await ensureChildFolder(`case:${caseId}:from-customer`, 'from-customer', caseFolder);
-  const fromOpsId = await ensureChildFolder(`case:${caseId}:from-ops`, 'from-ops', caseFolder);
-  const kycId = await ensureChildFolder(
-    `customer:${safeCustomerKey(customerKey)}:kyc`,
-    'kyc',
-    cust
-  );
-  return { customerId: cust, kycId, fromCustomerId, fromOpsId };
+  const base = fromGcsRef(cust);
+  const caseBase = joinPrefix(base, 'cases', caseId);
+  await ensurePrefix(joinPrefix(base, 'cases'));
+  await ensurePrefix(caseBase);
+  await ensurePrefix(joinPrefix(caseBase, 'from-customer'));
+  await ensurePrefix(joinPrefix(caseBase, 'from-ops'));
+  await ensurePrefix(joinPrefix(base, 'kyc'));
+  return {
+    customerId: cust,
+    kycId: toGcsRef(joinPrefix(base, 'kyc')),
+    profileId: toGcsRef(joinPrefix(base, 'profile')),
+    fromCustomerId: toGcsRef(joinPrefix(caseBase, 'from-customer')),
+    fromOpsId: toGcsRef(joinPrefix(caseBase, 'from-ops')),
+  };
 }
 
 async function ensureInvoiceFolder(year) {
   await ensureRootTree();
-  if (!driveConfigured()) {
+  if (!gcsConfigured()) {
     const p = path.join(config.localDriveRoot, 'admin', 'invoices', String(year));
     await ensureLocalDir(p);
     return `local:${p}`;
   }
-  const invoices = await getCachedFolder('root:admin:invoices');
-  return ensureChildFolder(`admin:invoices:${year}`, String(year), invoices);
+  const prefix = joinPrefix(envRoot(), 'admin', 'invoices', String(year));
+  await ensurePrefix(prefix);
+  return toGcsRef(prefix);
 }
 
 async function ensureBrochureFolder() {
   await ensureRootTree();
-  if (!driveConfigured()) {
+  if (!gcsConfigured()) {
     const p = path.join(config.localDriveRoot, 'admin', 'brochures');
     await ensureLocalDir(p);
     return `local:${p}`;
   }
-  return getCachedFolder('root:admin:brochures');
+  return toGcsRef(joinPrefix(envRoot(), 'admin', 'brochures'));
+}
+
+async function uploadGcs({ folderId, buffer, fileName, mimeType, appProperties, fileId }) {
+  const bucket = await getGcsBucket();
+  const prefix = fromGcsRef(folderId);
+  const objectPath = joinPrefix(prefix, `${fileId}_${safeFileName(fileName)}`);
+  const file = bucket.file(objectPath);
+  await file.save(buffer, {
+    resumable: false,
+    contentType: mimeType || 'application/octet-stream',
+    metadata: {
+      contentType: mimeType || 'application/octet-stream',
+      metadata: stringifyMeta({ fileId, ...appProperties }),
+    },
+  });
+  return { driveFileId: toGcsRef(objectPath), md5: md5Hex(buffer), size: buffer.length };
 }
 
 /**
  * Upload buffer to folder. Returns { fileId, driveFileId, md5, size, storage }
- * fileId is our public id; driveFileId is Google id or local path key.
+ * fileId is our public id; driveFileId is gs object ref or local path key.
  */
 async function upload({ folderId, buffer, fileName, mimeType, appProperties = {} }) {
   const db = requireDb();
@@ -255,43 +260,26 @@ async function upload({ folderId, buffer, fileName, mimeType, appProperties = {}
   let md5 = null;
   let size = buffer.length;
 
-  if (String(folderId).startsWith('local:') || !driveConfigured()) {
+  const useGcs = gcsConfigured() && (isGcsRef(folderId) || !String(folderId).startsWith('local:'));
+  if (!useGcs) {
     const local = await writeLocalFile({ folderId, buffer, fileName });
     fileId = local.fileId;
     driveFileId = local.driveFileId;
     size = local.size;
+    md5 = local.md5;
   } else {
     fileId = await newFileId();
-    try {
-      const drive = await getGoogleDrive();
-      const media = {
-        mimeType: mimeType || 'application/octet-stream',
-        body: Readable.from(buffer),
-      };
-      const resource = {
-        name: fileName,
-        parents: [folderId],
-        appProperties: { fileId, ...appProperties },
-      };
-      const res = await drive.files.create({
-        resource,
-        media,
-        fields: 'id,md5Checksum,size',
-        supportsAllDrives: true,
-      });
-      driveFileId = res.data.id;
-      md5 = res.data.md5Checksum || null;
-    } catch (err) {
-      if (!isDriveQuotaError(err)) throw err;
-      console.warn(
-        'Google Drive upload blocked (service account has no My Drive quota). Falling back to local storage. Set GOOGLE_DRIVE_SHARED_DRIVE_ID to a Shared Drive that contains the root folder.'
-      );
-      const localFolder = `local:${path.join(config.localDriveRoot, '_uploads')}`;
-      const local = await writeLocalFile({ folderId: localFolder, buffer, fileName });
-      fileId = local.fileId;
-      driveFileId = local.driveFileId;
-      size = local.size;
-    }
+    const stored = await uploadGcs({
+      folderId,
+      buffer,
+      fileName,
+      mimeType,
+      appProperties,
+      fileId,
+    });
+    driveFileId = stored.driveFileId;
+    md5 = stored.md5;
+    size = stored.size;
   }
 
   await db.collection('files').insertOne({
@@ -302,6 +290,7 @@ async function upload({ folderId, buffer, fileName, mimeType, appProperties = {}
     size,
     md5,
     folderId,
+    storage: String(driveFileId).startsWith('local:') ? 'local' : 'gcs',
     appProperties,
     deletedAt: null,
     createdAt: utcnow(),
@@ -313,7 +302,13 @@ async function upload({ folderId, buffer, fileName, mimeType, appProperties = {}
     tone: 'success',
   });
 
-  return { fileId, driveFileId, md5, size, storage: String(driveFileId).startsWith('local:') ? 'local' : 'google' };
+  return {
+    fileId,
+    driveFileId,
+    md5,
+    size,
+    storage: String(driveFileId).startsWith('local:') ? 'local' : 'gcs',
+  };
 }
 
 async function downloadStream(driveFileIdOrFileId) {
@@ -337,15 +332,17 @@ async function downloadStream(driveFileIdOrFileId) {
       fileId: meta?.id,
     };
   }
-  const drive = await getGoogleDrive();
-  if (!drive) throw Object.assign(new Error('File storage unavailable'), { status: 503 });
-  const params = { fileId: driveFileId, alt: 'media' };
-  if (config.googleDrive.sharedDriveId) params.supportsAllDrives = true;
-  const res = await drive.files.get(params, { responseType: 'stream' });
+  if (!isGcsRef(driveFileId) && !gcsConfigured()) {
+    throw Object.assign(new Error('File storage unavailable'), { status: 503 });
+  }
+  const bucket = await getGcsBucket();
+  if (!bucket) throw Object.assign(new Error('File storage unavailable'), { status: 503 });
+  const objectPath = fromGcsRef(driveFileId);
+  const file = bucket.file(objectPath);
   return {
-    stream: res.data,
+    stream: file.createReadStream(),
     mimeType: meta?.mimeType || 'application/octet-stream',
-    fileName: meta?.fileName || 'download',
+    fileName: meta?.fileName || path.basename(objectPath),
     size: meta?.size,
     fileId: meta?.id,
   };
@@ -366,14 +363,12 @@ async function trash(driveFileIdOrFileId) {
     } catch (_) {}
     return;
   }
-  if (!driveConfigured()) return;
-  const drive = await getGoogleDrive();
-  const params = { fileId: driveFileId };
-  if (config.googleDrive.sharedDriveId) params.supportsAllDrives = true;
+  if (!gcsConfigured() && !isGcsRef(driveFileId)) return;
   try {
-    await drive.files.update({ ...params, resource: { trashed: true } });
+    const bucket = await getGcsBucket();
+    await bucket.file(fromGcsRef(driveFileId)).delete({ ignoreNotFound: true });
   } catch (e) {
-    console.warn('drive trash failed:', e.message);
+    console.warn('gcs trash failed:', e.message);
   }
 }
 
@@ -385,10 +380,12 @@ async function getFileMeta(fileId) {
 module.exports = {
   driveConfigured,
   driveMode,
-  oauthConfigured,
-  serviceAccountConfigured,
+  gcsConfigured,
+  oauthConfigured: () => false,
+  serviceAccountConfigured: gcsConfigured,
   ensureRootTree,
   ensureCustomerFolder,
+  ensureProfileFolder,
   ensureCaseFolders,
   ensureInvoiceFolder,
   ensureBrochureFolder,

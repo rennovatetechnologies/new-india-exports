@@ -17,11 +17,15 @@ function publicMarketingFeatures(list) {
       if (!row) return null;
       if (typeof row === 'string') {
         const label = row.trim();
-        return label ? { label, included: true } : null;
+        return label ? { label, included: true, group: '' } : null;
       }
       const label = String(row.label || row.text || '').trim();
       if (!label) return null;
-      return { label, included: row.included !== false };
+      return {
+        label,
+        included: row.included !== false,
+        group: String(row.group || '').trim(),
+      };
     })
     .filter(Boolean);
 }
@@ -36,6 +40,7 @@ function publicPlan(p) {
     discountPercent,
     effectivePrice: effectivePrice(p.price, discountPercent),
     tagline: p.tagline || '',
+    description: p.description || '',
     timeline: p.timeline || '',
     featured: Boolean(p.featured),
     features: Array.isArray(p.features) ? p.features : [],
@@ -72,6 +77,7 @@ router.post(
       price: Math.round(Number(req.body.price) || 0),
       discountPercent: clampDiscount(req.body.discountPercent),
       tagline: req.body.tagline || '',
+      description: req.body.description || '',
       timeline: req.body.timeline || '',
       featured: Boolean(req.body.featured),
       features: req.body.features || [],
@@ -110,6 +116,7 @@ router.put(
       price: req.body.price != null ? Math.round(Number(req.body.price) || 0) : prev.price,
       discountPercent,
       tagline: req.body.tagline != null ? req.body.tagline : prev.tagline,
+      description: req.body.description != null ? req.body.description : prev.description,
       timeline: req.body.timeline != null ? req.body.timeline : prev.timeline,
       featured: req.body.featured != null ? Boolean(req.body.featured) : prev.featured,
       features: req.body.features != null ? req.body.features : prev.features,

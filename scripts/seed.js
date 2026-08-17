@@ -44,11 +44,44 @@ const BASIC_KYC = [
 ];
 
 const BASIC_STAGES = [
-  { id: 'kyc', label: 'KYC verified', description: 'Identity and business documents approved' },
-  { id: 'entity', label: 'Company / entity setup', description: 'Registrations prepared with government portals' },
-  { id: 'iec', label: 'IEC issued', description: 'Import Export Code from DGFT' },
-  { id: 'adcode', label: 'AD code mapped', description: 'Bank AD code registration' },
-  { id: 'docs_complete', label: 'Documentation complete', description: 'Core formation pack delivered' },
+  { id: 'kyc', label: 'KYC Verification', description: 'Identity and business documents approved' },
+  { id: 'shop_act', label: 'Shop & Establishment Act Registration', description: 'Local shop act / establishment filing' },
+  { id: 'msme', label: 'MSME Registration', description: 'Udyam / MSME certificate' },
+  { id: 'iec', label: 'IEC Registration', description: 'Import Export Code from DGFT' },
+  { id: 'gst', label: 'GST Registration', description: 'GSTIN issued for the export entity' },
+  { id: 'bank', label: 'Current Bank Account Assistance', description: 'Current account opened for export receipts' },
+  { id: 'adcode', label: 'AD Code Registration', description: 'Bank AD code registered' },
+  { id: 'rcmc', label: 'RCMC Certificate', description: 'Registration-cum-Membership Certificate' },
+  { id: 'phytosanitary', label: 'Phytosanitary Certificate Assistance', description: 'Plant health certificate support' },
+  { id: 'dsc', label: 'DSC Class 3', description: 'Digital Signature Certificate (Class 3)' },
+];
+
+const STANDARD_STAGES = [
+  ...BASIC_STAGES,
+  { id: 'dgft', label: 'DGFT Registration & Integration', description: 'DGFT portal registration and integration' },
+  { id: 'icegate', label: 'ICEGATE Registration & Integration', description: 'Customs ICEGATE registration and integration' },
+  { id: 'adcode_approval', label: 'AD Code Registration & Approval', description: 'AD code mapped and approved with the bank' },
+  { id: 'pfms', label: 'IFSC / PFMS Registration & Approval', description: 'IFSC and PFMS registration approved' },
+];
+
+const PREMIUM_STAGES = [
+  ...STANDARD_STAGES,
+  { id: 'company', label: 'Company Formation Assistance', description: 'Private Limited, LLP, or OPC formation' },
+  { id: 'trademark', label: 'Trademark Application Assistance', description: 'Trademark filing support' },
+  { id: 'virastra', label: 'Virastra Digital Platform Assistance', description: 'Onboarding to Virastra by New India Export' },
+  { id: 'shipment', label: 'Pre & Post-Shipment Guidance', description: 'Shipment workflow, documentation flow, and cost analysis' },
+];
+
+const STANDARD_KYC = [
+  ...BASIC_KYC,
+  { id: 'gst', label: 'GST certificate', required: true },
+  { id: 'boardResolution', label: 'Board resolution', required: true },
+];
+
+const PREMIUM_KYC = [
+  ...STANDARD_KYC,
+  { id: 'msme', label: 'MSME / Udyam certificate', required: false },
+  { id: 'cancelledCheque', label: 'Cancelled cheque', required: true },
 ];
 
 const DEFAULT_PLANS = [
@@ -57,23 +90,28 @@ const DEFAULT_PLANS = [
     name: 'Basic',
     price: 33999,
     discountPercent: 0,
-    tagline: 'For first-time exporters',
+    tagline: 'Documentation & Registration Services',
+    description:
+      'Essential registrations and documentation support required to start and operate an export business.',
     timeline: 'Liaisoning · 22 days',
     featured: false,
-    features: ['IEC + AD code', 'Core KYC pack', 'Email support', 'Formation workflow'],
+    features: [
+      'KYC verification',
+      'IEC, GST, MSME & Shop Act',
+      'Current account + AD code',
+      'RCMC, phytosanitary & DSC Class 3',
+    ],
     marketingFeatures: [
-      { label: 'Gumasta / Shop Act Registration', included: true },
+      { label: 'KYC Verification', included: true },
+      { label: 'Shop & Establishment Act Registration', included: true },
       { label: 'MSME Registration', included: true },
-      { label: 'IEC (Import Export Code)', included: true },
-      { label: 'Bank Account Assistance', included: true },
-      { label: 'GST Registration & LUT Filing', included: true },
-      { label: 'AD Code Generation', included: true },
+      { label: 'IEC (Import Export Code) Registration', included: true },
+      { label: 'GST Registration', included: true },
+      { label: 'Current Bank Account Assistance', included: true },
+      { label: 'AD Code Registration', included: true },
       { label: 'RCMC Certificate', included: true },
-      { label: 'Phytosanitary / Fumigation', included: true },
-      { label: 'DSC (Class 3)', included: true },
-      { label: 'DGFT Registration', included: false },
-      { label: 'ICEGATE Integration', included: false },
-      { label: 'Company Formation', included: false },
+      { label: 'Phytosanitary Certificate Assistance', included: true },
+      { label: 'DSC – Digital Signature Certificate (Class 3)', included: true },
     ],
     kycDocs: BASIC_KYC,
     workflowStages: BASIC_STAGES,
@@ -83,81 +121,81 @@ const DEFAULT_PLANS = [
     name: 'Standard',
     price: 43999,
     discountPercent: 0,
-    tagline: 'Most exporters pick this',
+    tagline: 'Documentation, Registration & Export Compliance',
+    description:
+      'Comprehensive support for business registrations, export documentation, government portal registrations, integrations, and required approvals.',
     timeline: 'Liaisoning · 22 days',
     featured: true,
     features: [
-      'Everything in Basic',
-      'RCMC + DGFT advisory',
-      'GST & board resolution in KYC',
-      'Priority ops support',
+      'Core export registrations',
+      'DGFT & ICEGATE integration',
+      'AD code approval',
+      'IFSC / PFMS registration & approval',
     ],
     marketingFeatures: [
-      { label: 'Everything in Basic', included: true },
+      { label: 'Shop & Establishment Act Registration', included: true },
+      { label: 'MSME Registration', included: true },
+      { label: 'IEC – Import Export Code Registration', included: true },
+      { label: 'Bank Account Assistance', included: true },
+      { label: 'GST Registration', included: true },
+      { label: 'AD Code Registration', included: true },
+      { label: 'RCMC Registration', included: true },
+      { label: 'Phytosanitary Certificate Assistance', included: true },
+      { label: 'DSC – Digital Signature Certificate (Class 3)', included: true },
       { label: 'DGFT Registration & Integration', included: true },
       { label: 'ICEGATE Registration & Integration', included: true },
-      { label: 'AD Code Approval', included: true },
-      { label: 'IFSC / PFMS Approval', included: true },
-      { label: 'Company Formation', included: false },
-      { label: 'Trademark Application', included: false },
-      { label: 'Quality Assessment Support', included: false },
-      { label: 'Pre & Post Shipment Docs', included: false },
-      { label: 'Shipment Cost Analysis', included: false },
-      { label: 'Expert Compliance Reviews', included: false },
-      { label: 'Exhibition Networking', included: false },
+      { label: 'AD Code Registration & Approval', included: true },
+      { label: 'IFSC/PFMS Registration & Approval', included: true },
     ],
-    kycDocs: [
-      ...BASIC_KYC,
-      { id: 'gst', label: 'GST certificate', required: true },
-      { id: 'boardResolution', label: 'Board resolution', required: true },
-    ],
-    workflowStages: [
-      ...BASIC_STAGES.slice(0, 4),
-      { id: 'rcmc', label: 'RCMC / APEDA', description: 'Commodity board registration' },
-      BASIC_STAGES[4],
-    ],
+    kycDocs: STANDARD_KYC,
+    workflowStages: STANDARD_STAGES,
   },
   {
     id: 'premium',
     name: 'Premium',
     price: 83999,
     discountPercent: 0,
-    tagline: 'Full white-glove desk',
+    tagline: 'Complete Business Formation, Export Documentation & Trade Support',
+    description:
+      'End-to-end export setup, including company formation, registrations, digital platform assistance, shipment support, expert guidance, and international trade networking.',
     timeline: 'Liaisoning · 45 days',
     featured: false,
     features: [
-      'Everything in Standard',
-      'Dedicated operations owner',
-      'Priority event seating support',
-      'Extended documentation pack',
+      'Company formation (Pvt Ltd / LLP / OPC)',
+      'Virastra digital platform assistance',
+      'Shipment support & cost analysis (up to 3)',
+      'Expert guidance & exhibition networking',
     ],
     marketingFeatures: [
-      { label: 'Everything in Standard', included: true },
-      { label: 'Company Formation', included: true },
-      { label: 'Trademark Application', included: true },
-      { label: 'Digital Platform Assistance', included: true },
-      { label: 'Quality Assessment Certification', included: true },
-      { label: 'Pre & Post Shipment Documentation', included: true },
-      { label: 'Shipment Cost Analysis & Statement', included: true },
-      { label: 'Expert Reviews & Compliance', included: true },
-      { label: 'Exhibition Exposure & Networking', included: true },
-      { label: 'Dedicated success manager', included: true },
-      { label: 'Priority operations queue', included: true },
-      { label: 'Investor & buyer intros', included: true },
+      { group: 'Business Formation & Registrations', label: 'Shop & Establishment Act Registration', included: true },
+      { group: 'Business Formation & Registrations', label: 'MSME Registration', included: true },
+      { group: 'Business Formation & Registrations', label: 'IEC – Import Export Code Registration', included: true },
+      { group: 'Business Formation & Registrations', label: 'Bank Account Assistance', included: true },
+      { group: 'Business Formation & Registrations', label: 'GST Registration', included: true },
+      { group: 'Business Formation & Registrations', label: 'AD Code Registration', included: true },
+      { group: 'Business Formation & Registrations', label: 'RCMC Certificate', included: true },
+      { group: 'Business Formation & Registrations', label: 'Phytosanitary Certificate Assistance', included: true },
+      { group: 'Business Formation & Registrations', label: 'DSC – Digital Signature Certificate (Class 3)', included: true },
+      { group: 'Government Portal & Compliance Support', label: 'DGFT Registration & Integration', included: true },
+      { group: 'Government Portal & Compliance Support', label: 'ICEGATE Registration & Integration', included: true },
+      { group: 'Government Portal & Compliance Support', label: 'AD Code Registration & Approval', included: true },
+      { group: 'Government Portal & Compliance Support', label: 'IFSC / PFMS Registration & Approval', included: true },
+      { group: 'Company Formation & Intellectual Property', label: 'Company Formation Assistance (Private Limited, LLP, OPC)', included: true },
+      { group: 'Company Formation & Intellectual Property', label: 'Trademark Application Assistance', included: true },
+      { group: 'Digital Export Platform', label: 'Virastra by New India Export – Digital Platform Assistance', included: true },
+      { group: 'Pre & Post-Shipment Support', label: 'Pre-Shipment & Post-Shipment Guidance', included: true },
+      { group: 'Pre & Post-Shipment Support', label: 'Shipment Process Charts & Workflow', included: true },
+      { group: 'Pre & Post-Shipment Support', label: 'Export Documentation Flow & Process Guidance', included: true },
+      { group: 'Pre & Post-Shipment Support', label: 'Shipment Cost Analysis – Up to 3 Shipments', included: true },
+      { group: 'Expert Business Support', label: 'Expert Reviews & Guidance', included: true },
+      { group: 'Expert Business Support', label: 'Export Business Process Review', included: true },
+      { group: 'Expert Business Support', label: 'Practical Guidance for Export Operations', included: true },
+      { group: 'Exhibitions & Business Networking', label: 'Exhibition Exposure & Updates', included: true },
+      { group: 'Exhibitions & Business Networking', label: 'International Trade Fair & Exhibition Networking Updates', included: true },
+      { group: 'Exhibitions & Business Networking', label: 'Business Networking Opportunities & Relevant Trade Updates', included: true },
     ],
-    kycDocs: [
-      ...BASIC_KYC,
-      { id: 'gst', label: 'GST certificate', required: true },
-      { id: 'boardResolution', label: 'Board resolution', required: true },
-      { id: 'msme', label: 'MSME / Udyam certificate', required: false },
-      { id: 'cancelledCheque', label: 'Cancelled cheque', required: true },
-    ],
-    workflowStages: [
-      ...BASIC_STAGES.slice(0, 4),
-      { id: 'rcmc', label: 'RCMC / APEDA', description: 'Commodity board registration' },
-      { id: 'dedicated', label: 'Dedicated desk onboarding', description: 'Success manager + ops handoff' },
-      BASIC_STAGES[4],
-    ],
+    kycDocs: PREMIUM_KYC,
+    workflowStages: PREMIUM_STAGES,
   },
 ];
 
@@ -406,27 +444,32 @@ async function seedIfEmpty() {
     await db.collection('plans').insertMany(DEFAULT_PLANS.map((p) => ({ ...p, createdAt: utcnow() })));
     console.log('Seeded plans');
   } else {
-    // Backfill catalog fields on older seeds without overwriting admin edits.
+    // Refresh official catalog copy without overwriting admin price/discount/featured.
     for (const plan of DEFAULT_PLANS) {
       const existing = await db.collection('plans').findOne({ id: plan.id });
-      if (!existing) continue;
-      const patch = {};
-      if (!existing.kycDocs || !existing.workflowStages) {
-        patch.kycDocs = existing.kycDocs || plan.kycDocs;
-        patch.workflowStages = existing.workflowStages || plan.workflowStages;
-        if (!existing.features) patch.features = plan.features;
-        if (!existing.tagline) patch.tagline = plan.tagline;
-        if (existing.featured == null) patch.featured = plan.featured;
-        if (existing.discountPercent == null) patch.discountPercent = 0;
+      if (!existing) {
+        await db.collection('plans').insertOne({ ...plan, createdAt: utcnow() });
+        console.log(`Inserted missing plan ${plan.id}`);
+        continue;
       }
-      if (!existing.timeline) patch.timeline = plan.timeline;
-      if (!Array.isArray(existing.marketingFeatures) || existing.marketingFeatures.length === 0) {
-        patch.marketingFeatures = plan.marketingFeatures;
-      }
-      if (Object.keys(patch).length) {
-        await db.collection('plans').updateOne({ id: plan.id }, { $set: patch });
-      }
+      await db.collection('plans').updateOne(
+        { id: plan.id },
+        {
+          $set: {
+            name: plan.name,
+            tagline: plan.tagline,
+            description: plan.description,
+            timeline: plan.timeline,
+            features: plan.features,
+            marketingFeatures: plan.marketingFeatures,
+            workflowStages: plan.workflowStages,
+            kycDocs: plan.kycDocs,
+            updatedAt: utcnow(),
+          },
+        }
+      );
     }
+    console.log('Refreshed plan catalog copy');
   }
 
   // Placeholder gallery rows stay purged. Real PDF catalogues are stored on the backend.

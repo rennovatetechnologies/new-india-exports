@@ -32,7 +32,10 @@ app.use(requestIdMiddleware);
 
 app.use(
   cors({
-    origin: config.corsOrigins,
+    origin(origin, cb) {
+      if (config.corsOriginAllowed(origin)) return cb(null, true);
+      return cb(new Error(`CORS blocked: ${origin}`));
+    },
     credentials: true,
   })
 );
@@ -147,10 +150,12 @@ async function bootDb() {
   await connectDb();
   await seedIfEmpty();
   try {
-    await drive.ensureRootTree();
+    const tree = await drive.ensureRootTree();
     console.log(
-      'Drive root tree ready',
-      drive.driveConfigured() ? `(Google ${drive.driveMode()})` : '(local fallback)'
+      'File storage ready',
+      tree.mode === 'gcs'
+        ? `(GCS gs://${tree.bucket}/${tree.env})`
+        : '(local fallback)'
     );
   } catch (e) {
     console.warn('Drive bootstrap warning:', e.message);
@@ -181,8 +186,13 @@ async function start() {
       }
     }, 15000);
   }
-  app.listen(config.port, () => {
+  app.listen(config.port, '0.0.0.0', () => {
     console.log(`Express server running on port ${config.port} (${config.appEnv})`);
+    if (config.isProduction && config.razorpayIsTest) {
+      console.warn(
+        'Razorpay TEST keys (rzp_test_) are in use in production until live keys are confirmed.'
+      );
+    }
   });
 }
 

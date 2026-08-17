@@ -37,6 +37,7 @@ const staffPermissionsSchema = z.object({
 const marketingFeatureSchema = z.object({
   label: z.string().trim().min(1).max(300),
   included: z.boolean().optional().default(true),
+  group: optionalString(120),
 });
 
 const planCreateSchema = z.object({
@@ -45,6 +46,7 @@ const planCreateSchema = z.object({
   price: z.coerce.number().min(0).optional().default(0),
   discountPercent: z.coerce.number().min(0).max(100).optional().default(0),
   tagline: optionalString(300),
+  description: optionalString(800),
   timeline: optionalString(120),
   featured: z.boolean().optional().default(false),
   features: z.array(z.string().trim().max(300)).optional().default([]),
@@ -58,6 +60,7 @@ const planUpdateSchema = z.object({
   price: z.coerce.number().min(0).optional(),
   discountPercent: z.coerce.number().min(0).max(100).optional(),
   tagline: optionalString(300),
+  description: optionalString(800),
   timeline: optionalString(120),
   featured: z.boolean().optional(),
   features: z.array(z.string().trim().max(300)).optional(),

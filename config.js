@@ -1,3 +1,4 @@
+const path = require('path');
 require('dotenv').config();
 
 function splitOrigins(raw) {
@@ -11,6 +12,22 @@ function envBool(name, fallback = false) {
   const v = process.env[name];
   if (v == null || v === '') return fallback;
   return ['1', 'true', 'yes', 'on'].includes(String(v).toLowerCase());
+}
+
+function parseJsonEnv(name) {
+  const raw = process.env[name];
+  if (raw == null || String(raw).trim() === '') return null;
+  try {
+    return JSON.parse(raw);
+  } catch {
+    console.warn(`${name} is not valid JSON`);
+    return null;
+  }
+}
+
+function railwayHttpsUrl() {
+  const domain = process.env.RAILWAY_PUBLIC_DOMAIN;
+  return domain ? `https://${String(domain).replace(/\/$/, '')}` : '';
 }
 
 const seller = {
@@ -66,7 +83,11 @@ const config = {
   installmentCount: parseInt(process.env.INSTALLMENT_COUNT || '3', 10),
   installmentGapDays: parseInt(process.env.INSTALLMENT_GAP_DAYS || '10', 10),
   installmentWindowDays: parseInt(process.env.INSTALLMENT_WINDOW_DAYS || '30', 10),
-  frontendUrl: (process.env.FRONTEND_URL || 'http://localhost:5173').replace(/\/$/, ''),
+  frontendUrl: (
+    process.env.FRONTEND_URL ||
+    railwayHttpsUrl() ||
+    'http://localhost:5173'
+  ).replace(/\/$/, ''),
   enableDocs: envBool('ENABLE_DOCS', false),
   enableLegacyShipment: envBool('ENABLE_LEGACY_SHIPMENT', false),
 
@@ -85,17 +106,14 @@ const config = {
   appName: process.env.APP_NAME || 'VIRASTRA INTERNATIONAL EXPORT',
 
   googleDrive: {
-    // Preferred for My Drive: OAuth user (uses that user's storage quota).
+    // Legacy Drive settings (unused; files now go to GCS). Kept so old env files still parse.
     oauthClientId: process.env.GOOGLE_DRIVE_OAUTH_CLIENT_ID || '',
     oauthClientSecret: process.env.GOOGLE_DRIVE_OAUTH_CLIENT_SECRET || '',
     oauthRefreshToken: process.env.GOOGLE_DRIVE_OAUTH_REFRESH_TOKEN || '',
     oauthRedirectUri:
       process.env.GOOGLE_DRIVE_OAUTH_REDIRECT_URI || 'http://localhost:5055/oauth2callback',
-    // Alternative: service account + Shared Drive (SA has no My Drive quota).
     clientEmail: process.env.GOOGLE_DRIVE_CLIENT_EMAIL || '',
     privateKey: (process.env.GOOGLE_DRIVE_PRIVATE_KEY || '').replace(/\\n/g, '\n'),
-    // Prefer explicit root; else pre-prod for non-production, prod for production.
-    // Virastra Hub: …/Virastra/{pre-prod|prod}/…
     rootFolderId:
       process.env.GOOGLE_DRIVE_ROOT_FOLDER_ID ||
       (process.env.APP_ENV === 'production'
@@ -106,11 +124,51 @@ const config = {
     sharedDriveId: process.env.GOOGLE_DRIVE_SHARED_DRIVE_ID || '',
   },
 
+  gcs: {
+    bucket: process.env.GCS_BUCKET || 'virastra',
+    projectId: process.env.GCS_PROJECT_ID || 'virastra-504906',
+    // Railway / GitHub: paste the service-account JSON into GCS_CREDENTIALS_JSON.
+    credentials:
+      parseJsonEnv('GCS_CREDENTIALS_JSON') ||
+      parseJsonEnv('GOOGLE_APPLICATION_CREDENTIALS_JSON'),
+    keyFile: (() => {
+      const raw =
+        process.env.GCS_KEY_FILE ||
+        process.env.GOOGLE_APPLICATION_CREDENTIALS ||
+        'virastra-504906-2c957972de4c.json';
+      return path.isAbsolute(raw) ? raw : path.join(__dirname, raw);
+    })(),
+    // APP_ENV=production → PROD/, otherwise DEV/
+    envFolder: (
+      process.env.GCS_ENV_FOLDER ||
+      (process.env.APP_ENV === 'production' ? 'PROD' : 'DEV')
+    )
+      .toString()
+      .trim()
+      .toUpperCase(),
+  },
+
   seller,
-  localDriveRoot: process.env.LOCAL_DRIVE_ROOT || require('path').join(__dirname, '.data', 'drive'),
+  localDriveRoot: process.env.LOCAL_DRIVE_ROOT || path.join(__dirname, '.data', 'drive'),
 
   get isProduction() {
     return this.appEnv === 'production';
+  },
+  get razorpayIsTest() {
+    return String(this.razorpayKeyId || '').startsWith('rzp_test_');
+  },
+  corsOriginAllowed(origin) {
+    if (!origin) return true;
+    if (this.corsOrigins.includes('*')) return true;
+    if (this.corsOrigins.includes(origin)) return true;
+    try {
+      const host = new URL(origin).hostname;
+      if (host === 'localhost' || host === '127.0.0.1') return true;
+      if (host.endsWith('.up.railway.app') || host.endsWith('.railway.app')) return true;
+    } catch {
+      return false;
+    }
+    return false;
   },
   get workshopInr() {
     if (process.env.WORKSHOP_AMOUNT_INR) return this.workshopAmountInr;

@@ -1,0 +1,87 @@
+name: Sync GitHub secrets to Railway
+
+# Optional: copy GitHub secrets → Railway variables (same names).
+# Production deploys are Railway’s GitHub integration on push to master.
+# This workflow does not deploy. Run it once after adding RAILWAY_TOKEN,
+# RAILWAY_PROJECT_ID, and RAILWAY_SERVICE_ID if variables are not already
+# set in the Railway dashboard.
+
+on:
+  workflow_dispatch:
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Install Railway CLI
+        run: npm i -g @railway/cli
+
+      - name: Push variables to Railway
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+          RAILWAY_PROJECT_ID: ${{ secrets.RAILWAY_PROJECT_ID }}
+          RAILWAY_SERVICE_ID: ${{ secrets.RAILWAY_SERVICE_ID }}
+          APP_ENV: ${{ secrets.APP_ENV }}
+          MONGODB_URI: ${{ secrets.MONGODB_URI }}
+          MONGODB_DB_NAME: ${{ secrets.MONGODB_DB_NAME }}
+          MONGODB_DB_NAME_NONPROD: ${{ secrets.MONGODB_DB_NAME_NONPROD }}
+          MONGODB_DB_NAME_PROD: ${{ secrets.MONGODB_DB_NAME_PROD }}
+          JWT_SECRET: ${{ secrets.JWT_SECRET }}
+          JWT_EXPIRE_HOURS: ${{ secrets.JWT_EXPIRE_HOURS }}
+          CORS_ORIGINS: ${{ secrets.CORS_ORIGINS }}
+          FRONTEND_URL: ${{ secrets.FRONTEND_URL }}
+          ENABLE_DOCS: ${{ secrets.ENABLE_DOCS }}
+          ENABLE_LEGACY_SHIPMENT: ${{ secrets.ENABLE_LEGACY_SHIPMENT }}
+          RAZORPAY_KEY_ID: ${{ secrets.RAZORPAY_KEY_ID }}
+          RAZORPAY_KEY_SECRET: ${{ secrets.RAZORPAY_KEY_SECRET }}
+          RAZORPAY_WEBHOOK_SECRET: ${{ secrets.RAZORPAY_WEBHOOK_SECRET }}
+          GST_RATE: ${{ secrets.GST_RATE }}
+          WORKSHOP_AMOUNT_INR: ${{ secrets.WORKSHOP_AMOUNT_INR }}
+          BOOKING_AMOUNT_INR: ${{ secrets.BOOKING_AMOUNT_INR }}
+          OTP_TTL_MINUTES: ${{ secrets.OTP_TTL_MINUTES }}
+          OTP_RATE_LIMIT: ${{ secrets.OTP_RATE_LIMIT }}
+          DISABLE_RATE_LIMITS: ${{ secrets.DISABLE_RATE_LIMITS }}
+          MAX_UPLOAD_BYTES: ${{ secrets.MAX_UPLOAD_BYTES }}
+          MAX_CASE_UPLOAD_BYTES: ${{ secrets.MAX_CASE_UPLOAD_BYTES }}
+          SMTP_HOST: ${{ secrets.SMTP_HOST }}
+          SMTP_PORT: ${{ secrets.SMTP_PORT }}
+          SMTP_SECURE: ${{ secrets.SMTP_SECURE }}
+          SMTP_USER: ${{ secrets.SMTP_USER }}
+          SMTP_PASS: ${{ secrets.SMTP_PASS }}
+          MAIL_FROM: ${{ secrets.MAIL_FROM }}
+          MAIL_REPLY_TO: ${{ secrets.MAIL_REPLY_TO }}
+          OPS_INBOX: ${{ secrets.OPS_INBOX }}
+          ADMIN_INBOX: ${{ secrets.ADMIN_INBOX }}
+          SUPPORT_EMAIL: ${{ secrets.SUPPORT_EMAIL }}
+          APP_NAME: ${{ secrets.APP_NAME }}
+          GCS_BUCKET: ${{ secrets.GCS_BUCKET }}
+          GCS_PROJECT_ID: ${{ secrets.GCS_PROJECT_ID }}
+          GCS_ENV_FOLDER: ${{ secrets.GCS_ENV_FOLDER }}
+          GCS_CREDENTIALS_JSON: ${{ secrets.GCS_CREDENTIALS_JSON }}
+        run: |
+          set -euo pipefail
+          if [ -z "${RAILWAY_TOKEN:-}" ] || [ -z "${RAILWAY_PROJECT_ID:-}" ] || [ -z "${RAILWAY_SERVICE_ID:-}" ]; then
+            echo "Add GitHub secrets RAILWAY_TOKEN, RAILWAY_PROJECT_ID, and RAILWAY_SERVICE_ID, then re-run."
+            exit 1
+          fi
+          KEYS="
+            APP_ENV MONGODB_URI MONGODB_DB_NAME MONGODB_DB_NAME_NONPROD MONGODB_DB_NAME_PROD
+            JWT_SECRET JWT_EXPIRE_HOURS CORS_ORIGINS FRONTEND_URL ENABLE_DOCS ENABLE_LEGACY_SHIPMENT
+            RAZORPAY_KEY_ID RAZORPAY_KEY_SECRET RAZORPAY_WEBHOOK_SECRET
+            GST_RATE WORKSHOP_AMOUNT_INR BOOKING_AMOUNT_INR
+            OTP_TTL_MINUTES OTP_RATE_LIMIT DISABLE_RATE_LIMITS
+            MAX_UPLOAD_BYTES MAX_CASE_UPLOAD_BYTES
+            SMTP_HOST SMTP_PORT SMTP_SECURE SMTP_USER SMTP_PASS
+            MAIL_FROM MAIL_REPLY_TO OPS_INBOX ADMIN_INBOX SUPPORT_EMAIL APP_NAME
+            GCS_BUCKET GCS_PROJECT_ID GCS_ENV_FOLDER GCS_CREDENTIALS_JSON
+          "
+          for key in $KEYS; do
+            val="${!key-}"
+            if [ -n "$val" ]; then
+              railway variables set --skip-deploys \
+                --project "$RAILWAY_PROJECT_ID" \
+                --service "$RAILWAY_SERVICE_ID" \
+                --environment production \
+                "$key=$val"
+            fi
+          done

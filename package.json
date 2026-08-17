@@ -3,6 +3,9 @@
   "version": "2.3.0",
   "description": "VIRASTRA / New India Export production API (OTP auth, cases, Razorpay, GST invoices, Drive, SMTP)",
   "main": "server.js",
+  "engines": {
+    "node": ">=20"
+  },
   "scripts": {
     "start": "node server.js",
     "dev": "node --watch server.js",
@@ -10,13 +13,14 @@
     "build": "node --check server.js && node --check config.js && node --check db.js",
     "check": "node --check server.js && for f in routes/*.js services/*.js services/**/*.js middleware/*.js schemas/*.js; do node --check \"$f\" || exit 1; done",
     "db:setup": "node scripts/setupDatabases.js",
-    "drive:oauth": "node scripts/googleDriveOAuth.js"
+    "gcs:init": "node scripts/initGcs.js"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
   "type": "commonjs",
   "dependencies": {
+    "@google-cloud/storage": "^7.22.0",
     "archiver": "^8.0.0",
     "axios": "^1.6.2",
     "cors": "^2.8.5",

@@ -6,6 +6,7 @@ const { validateBody, validateParams } = require('../middleware/validate');
 const { normalizeEmail, utcnow } = require('../services/helpers');
 const { uploadAvatar } = require('../utils/uploads');
 const { asyncHandler } = require('../utils/asyncHandler');
+const drive = require('../services/drive');
 const {
   profileUpdateSchema,
   companyUpdateSchema,
@@ -64,20 +65,26 @@ router.post(
   asyncHandler(async (req, res) => {
     if (!req.file) return res.status(400).json({ success: false, message: 'File required' });
     const email = normalizeEmail(req.user.email);
-    const fs = getFs('avatars');
-    const uploadStream = fs.openUploadStream(req.file.originalname, {
-      contentType: req.file.mimetype,
-      metadata: { email },
-    });
-    await new Promise((resolve, reject) => {
-      uploadStream.end(req.file.buffer);
-      uploadStream.on('finish', resolve);
-      uploadStream.on('error', reject);
+    const folderId = await drive.ensureProfileFolder(email);
+    const uploaded = await drive.upload({
+      folderId,
+      buffer: req.file.buffer,
+      fileName: req.file.originalname,
+      mimeType: req.file.mimetype,
+      appProperties: { kind: 'avatar', uploadedBy: email, role: req.user.role },
     });
     const url = '/api/me/avatar-file';
-    await requireDb()
-      .collection('users')
-      .updateOne({ email }, { $set: { avatarUrl: url, avatarGridId: uploadStream.id } });
+    const db = requireDb();
+    const prev = await db.collection('users').findOne({ email });
+    if (prev?.avatarFileId) {
+      try {
+        await drive.trash(prev.avatarFileId);
+      } catch (_) {}
+    }
+    await db.collection('users').updateOne(
+      { email },
+      { $set: { avatarUrl: url, avatarFileId: uploaded.fileId }, $unset: { avatarGridId: '' } }
+    );
     return res.json({ avatarUrl: url });
   })
 );
@@ -89,6 +96,12 @@ router.get(
     const db = requireDb();
     const email = normalizeEmail(req.user.email);
     const u = (await db.collection('users').findOne({ email })) || {};
+    if (u.avatarFileId) {
+      const { stream, mimeType } = await drive.downloadStream(u.avatarFileId);
+      res.setHeader('Content-Type', mimeType || 'image/png');
+      stream.pipe(res);
+      return;
+    }
     if (!u.avatarGridId) return res.status(404).json({ success: false, message: 'No avatar' });
     res.setHeader('Content-Type', 'image/png');
     getFs('avatars').openDownloadStream(new ObjectId(String(u.avatarGridId))).pipe(res);
