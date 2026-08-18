@@ -67,6 +67,29 @@ const config = {
   port: parseInt(process.env.PORT || '5001', 10),
   otpTtlMinutes: parseInt(process.env.OTP_TTL_MINUTES || '10', 10),
   otpRateLimit: parseInt(process.env.OTP_RATE_LIMIT || '5', 10),
+  // Master channel switches. WhatsApp stays off until creds + ENABLE_* are set.
+  emailNotificationsEnabled: envBool('ENABLE_EMAIL_NOTIFICATIONS', true),
+  emailOtpEnabled: envBool('ENABLE_EMAIL_OTP', true),
+  whatsappNotificationsEnabled: envBool('ENABLE_WHATSAPP_NOTIFICATIONS', false),
+  whatsappOtpEnabled: envBool('ENABLE_WHATSAPP_OTP', false),
+  whatsapp: {
+    phoneNumberId: process.env.WHATSAPP_PHONE_NUMBER_ID || '',
+    accessToken: process.env.WHATSAPP_ACCESS_TOKEN || '',
+    businessAccountId: process.env.WHATSAPP_BUSINESS_ACCOUNT_ID || '',
+    apiVersion: process.env.WHATSAPP_API_VERSION || 'v21.0',
+    graphBase: (process.env.WHATSAPP_GRAPH_BASE || 'https://graph.facebook.com').replace(/\/$/, ''),
+    defaultCountryCode: String(process.env.WHATSAPP_DEFAULT_COUNTRY_CODE || '91').replace(/\D/g, '') || '91',
+    otpTemplate: process.env.WHATSAPP_OTP_TEMPLATE || 'virastra_otp',
+    otpTemplateLang: process.env.WHATSAPP_OTP_TEMPLATE_LANG || 'en',
+    otpButton: String(process.env.WHATSAPP_OTP_BUTTON || 'copy_code').toLowerCase(),
+    otpBodyParams: Math.max(1, parseInt(process.env.WHATSAPP_OTP_BODY_PARAMS || '1', 10)),
+    notifyTemplate: process.env.WHATSAPP_NOTIFY_TEMPLATE || '',
+    notifyTemplateLang: process.env.WHATSAPP_NOTIFY_TEMPLATE_LANG || 'en',
+    allowSessionText: envBool('WHATSAPP_ALLOW_SESSION_TEXT', process.env.APP_ENV !== 'production'),
+    get isConfigured() {
+      return Boolean(this.phoneNumberId && this.accessToken);
+    },
+  },
   // Off by default outside production (avoids 429s during local/dev testing).
   disableRateLimits: envBool('DISABLE_RATE_LIMITS', process.env.APP_ENV !== 'production'),
   // Audit trail in Mongo; auto-deleted after this many days (keeps Atlas + RAM small).
@@ -92,18 +115,12 @@ const config = {
   enableDocs: envBool('ENABLE_DOCS', true),
   enableLegacyShipment: envBool('ENABLE_LEGACY_SHIPMENT', false),
 
-  smtp: {
-    host: process.env.SMTP_HOST || 'smtp.gmail.com',
-    port: parseInt(process.env.SMTP_PORT || '465', 10),
-    secure: envBool('SMTP_SECURE', true),
-    user: process.env.SMTP_USER || '',
-    pass: process.env.SMTP_PASS || '',
-  },
-  mailFrom: process.env.MAIL_FROM || 'VIRASTRA INTERNATIONAL EXPORT <noreply@newindiaexport.com>',
-  mailReplyTo: process.env.MAIL_REPLY_TO || 'support@newindiaexport.com',
-  opsInbox: process.env.OPS_INBOX || 'ops@newindiaexport.com',
-  adminInbox: process.env.ADMIN_INBOX || 'admin@newindiaexport.com',
-  supportEmail: process.env.SUPPORT_EMAIL || 'support@newindiaexport.com',
+  resendApiKey: process.env.RESEND_API_KEY || '',
+  mailFrom: process.env.MAIL_FROM || 'VIRASTRA <noreply@virastrainternationalexport.com>',
+  mailReplyTo: process.env.MAIL_REPLY_TO || 'support@virastrainternationalexport.com',
+  opsInbox: process.env.OPS_INBOX || 'ops@virastrainternationalexport.com',
+  adminInbox: process.env.ADMIN_INBOX || 'admin@virastrainternationalexport.com',
+  supportEmail: process.env.SUPPORT_EMAIL || 'support@virastrainternationalexport.com',
   appName: process.env.APP_NAME || 'VIRASTRA INTERNATIONAL EXPORT',
 
   googleDrive: {

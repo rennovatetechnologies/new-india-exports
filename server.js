@@ -1,6 +1,6 @@
 require('dotenv').config();
 const dns = require('dns');
-// Railway has no outbound IPv6. Prefer A records so SMTP/GCS do not hit ENETUNREACH.
+// Railway has no outbound IPv6. Prefer A records so GCS does not hit ENETUNREACH.
 if (typeof dns.setDefaultResultOrder === 'function') {
   dns.setDefaultResultOrder('ipv4first');
 }
@@ -13,7 +13,7 @@ const { connectDb, getDb } = require('./db');
 const { seedIfEmpty } = require('./scripts/seed');
 const { verifyWebhookSignature, capturePayment, markPaymentFailed } = require('./services/payments');
 const { startReminderJob } = require('./services/installments');
-const { verifySmtp } = require('./services/mail');
+const { verifyMail } = require('./services/mail');
 const { requestIdMiddleware } = require('./middleware/auth');
 const drive = require('./services/drive');
 
@@ -208,7 +208,13 @@ async function start() {
         'Razorpay TEST keys (rzp_test_) are in use in production until live keys are confirmed.'
       );
     }
-    verifySmtp().catch((e) => console.warn('SMTP verify skipped:', e.message));
+    verifyMail().catch((e) => console.warn('Resend verify skipped:', e.message));
+    try {
+      const { describeStatus } = require('./services/whatsapp');
+      console.info(describeStatus());
+    } catch (e) {
+      console.warn('WhatsApp status skipped:', e.message);
+    }
   });
 }
 

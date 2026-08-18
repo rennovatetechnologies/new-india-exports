@@ -216,9 +216,12 @@ router.get(
     const db = requireDb();
     const email = normalizeEmail(req.user.email);
     const u = (await db.collection('users').findOne({ email })) || {};
-    return res.json(
-      u.notificationPrefs || { workflow: true, billing: true, weekly: false, marketing: false }
-    );
+    const { mergePrefs, publicChannelFlags } = require('../services/notify/prefs');
+    return res.json({
+      ...mergePrefs(u.notificationPrefs),
+      channels: publicChannelFlags(),
+      phone: u.phone || '',
+    });
   })
 );
 
@@ -229,14 +232,18 @@ router.put(
   asyncHandler(async (req, res) => {
     const db = requireDb();
     const email = normalizeEmail(req.user.email);
-    const prefs = {
-      workflow: Boolean(req.body.workflow),
-      billing: Boolean(req.body.billing),
-      weekly: Boolean(req.body.weekly),
-      marketing: Boolean(req.body.marketing),
-    };
+    const { mergePrefs, publicChannelFlags } = require('../services/notify/prefs');
+    const current = (await db.collection('users').findOne({ email })) || {};
+    const patch = {};
+    for (const key of ['workflow', 'billing', 'weekly', 'marketing', 'email', 'whatsapp']) {
+      if (typeof req.body[key] === 'boolean') patch[key] = req.body[key];
+    }
+    const prefs = mergePrefs({
+      ...current.notificationPrefs,
+      ...patch,
+    });
     await db.collection('users').updateOne({ email }, { $set: { notificationPrefs: prefs } });
-    return res.json(prefs);
+    return res.json({ ...prefs, channels: publicChannelFlags(), phone: current.phone || '' });
   })
 );
 

@@ -1,7 +1,8 @@
 const config = require('../config');
 const { requireDb } = require('../db');
 const { normalizeEmail, utcnow } = require('./helpers');
-const { enqueueEmail } = require('./mail');
+const { notify, publicChannelFlags } = require('./notify');
+const { resolvePhoneForEmail } = require('./whatsapp');
 
 const VALID_PURPOSES = new Set([
   'customer_login',
@@ -10,10 +11,35 @@ const VALID_PURPOSES = new Set([
   'staff_register',
 ]);
 
-async function createOtp(email, purpose) {
+async function createOtp(email, purpose, { phone, name } = {}) {
   if (!VALID_PURPOSES.has(purpose)) throw new Error('Invalid OTP purpose');
   const db = requireDb();
   const emailN = normalizeEmail(email);
+  const flags = publicChannelFlags();
+  if (!flags.emailOtp && !flags.whatsappOtp) {
+    const err = new Error('Sign-in codes are temporarily unavailable. Please try again shortly.');
+    err.code = 'OTP_CHANNELS_DISABLED';
+    throw err;
+  }
+
+  const resolvedPhone = await resolvePhoneForEmail(emailN, phone);
+  if (!flags.emailOtp && flags.whatsappOtp && !resolvedPhone.digits) {
+    const err = new Error(
+      'We could not send a WhatsApp code because this account has no mobile number. Add a number in Settings or contact support.'
+    );
+    err.code = 'OTP_PHONE_REQUIRED';
+    throw err;
+  }
+
+  if (!name) {
+    const existing = await db.collection('users').findOne({ email: emailN });
+    name = existing?.name || '';
+    if (!name && purpose === 'customer_signup') {
+      const draft = await db.collection('signup_drafts').findOne({ email: emailN });
+      name = draft?.name || '';
+    }
+  }
+
   const code = String(Math.floor(100000 + Math.random() * 900000));
   const expiresAt = new Date(Date.now() + config.otpTtlMinutes * 60 * 1000);
   await db.collection('otps').deleteMany({ email: emailN, purpose });
@@ -21,26 +47,47 @@ async function createOtp(email, purpose) {
     email: emailN,
     purpose,
     code,
+    phone: resolvedPhone.e164 || '',
     expiresAt,
     createdAt: utcnow(),
   });
   if (!config.isProduction) {
     console.info(`[DEV OTP] ${emailN} (${purpose}): ${code}`);
   }
+
+  let delivery;
   try {
-    await enqueueEmail({
+    delivery = await notify({
       to: emailN,
+      phone: resolvedPhone,
       template: 'auth.otp',
       vars: {
         otpCode: code,
         expiresMinutes: config.otpTtlMinutes,
         customerEmail: emailN,
+        customerName: name || '',
+        purpose,
       },
     });
   } catch (e) {
-    console.warn('OTP email enqueue failed:', e.message);
+    console.warn('OTP notify failed:', e.message);
+    delivery = { sentVia: [], skipped: [{ channel: 'notify', reason: e.message }], phone: resolvedPhone };
   }
-  return code;
+
+  if (config.isProduction && !(delivery.sentVia || []).length) {
+    const err = new Error('We could not send a verification code. Please try again shortly.');
+    err.code = 'OTP_DELIVERY_FAILED';
+    throw err;
+  }
+
+  return {
+    code,
+    sentVia: delivery.sentVia || [],
+    masked: delivery.masked,
+    phone: resolvedPhone,
+    channels: flags,
+    expiresInSec: config.otpTtlMinutes * 60,
+  };
 }
 
 async function verifyOtp(email, purpose, code) {

@@ -5,6 +5,7 @@ const { validateBody, validateQuery } = require('../middleware/validate');
 const { utcnow, cleanDoc } = require('../services/helpers');
 const { asyncHandler } = require('../utils/asyncHandler');
 const { retryFailed } = require('../services/mail');
+const { retryFailed: retryWhatsAppFailed } = require('../services/whatsapp');
 const {
   emailOutboxRetrySchema,
   auditQuerySchema,
@@ -478,8 +479,9 @@ router.post(
   requireAdmin,
   validateBody(emailOutboxRetrySchema),
   asyncHandler(async (req, res) => {
-    const n = await retryFailed(Number(req.body.limit || 20));
-    return res.json({ success: true, retried: n });
+    const emailN = await retryFailed(Number(req.body.limit || 20));
+    const whatsappN = await retryWhatsAppFailed(Number(req.body.limit || 20));
+    return res.json({ success: true, retried: emailN, email: emailN, whatsapp: whatsappN });
   })
 );
 

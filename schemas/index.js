@@ -324,10 +324,12 @@ const teamInviteSchema = z.object({
 });
 
 const notificationPrefsSchema = z.object({
-  workflow: z.boolean().optional().default(true),
-  billing: z.boolean().optional().default(true),
-  weekly: z.boolean().optional().default(false),
-  marketing: z.boolean().optional().default(false),
+  workflow: z.boolean().optional(),
+  billing: z.boolean().optional(),
+  weekly: z.boolean().optional(),
+  marketing: z.boolean().optional(),
+  email: z.boolean().optional(),
+  whatsapp: z.boolean().optional(),
 });
 
 const docRequestSchema = z.object({

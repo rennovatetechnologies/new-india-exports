@@ -8,6 +8,7 @@ const { actorFromReq } = require('../services/audit');
 const payments = require('../services/payments');
 const installments = require('../services/installments');
 const { requireDb } = require('../db');
+const { publicChannelFlags } = require('../services/notify/prefs');
 const { asyncHandler } = require('../utils/asyncHandler');
 const { normalizeEmail, utcnow } = require('../services/helpers');
 const { writeAudit } = require('../services/audit');
@@ -262,6 +263,7 @@ router.get('/config/public', (req, res) => {
         gstin: config.seller.gstin,
         address: (config.seller.addressLines || []).join(', '),
       },
+      channels: publicChannelFlags(),
     },
     // FE also reads top-level
     razorpayKeyId: config.razorpayKeyId || '',
@@ -277,6 +279,7 @@ router.get('/config/public', (req, res) => {
       gstin: config.seller.gstin,
       address: (config.seller.addressLines || []).join(', '),
     },
+    channels: publicChannelFlags(),
   });
 });
 

@@ -78,9 +78,10 @@ router.get(
     ) {
       return res.status(403).json({ success: false, message: 'Forbidden' });
     }
-    const fileName = inv.pdf?.fileName || `${inv.invoiceNumber.replace(/\//g, '-')}.pdf`;
+    const fileName = inv.pdf?.fileName || `${String(inv.invoiceNumber || inv.id || 'invoice').replace(/\//g, '-')}.pdf`;
     res.setHeader('Content-Type', 'application/pdf');
     res.setHeader('Content-Disposition', `attachment; filename="${fileName}"`);
+    res.setHeader('Access-Control-Expose-Headers', 'Content-Disposition');
     // Always render on the fly — invoices are not stored on Drive.
     const buf = await renderInvoicePdf(inv);
     return res.send(buf);

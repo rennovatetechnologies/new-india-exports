@@ -245,7 +245,7 @@ function loadFileTemplate(template, ext) {
 function builtInBodies(template, v) {
   const hi = greetingName(v);
   const caseLine = v.caseId ? `Case reference: <strong>${escapeHtml(v.caseId)}</strong>` : '';
-  const support = escapeHtml(config.supportEmail || 'support@newindiaexport.com');
+  const support = escapeHtml(config.supportEmail || 'support@virastrainternationalexport.com');
 
   switch (template) {
     case 'auth.otp':
@@ -932,4 +932,6 @@ module.exports = {
   TEMPLATE_ATTACHMENTS,
   escapeHtml,
   money,
+  defaultCta,
+  greetingName,
 };

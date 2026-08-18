@@ -324,12 +324,26 @@ async function handleOtpSend(req, res) {
     );
   }
 
+  let delivery;
   try {
-    await createOtp(email, purpose);
+    delivery = await createOtp(email, purpose, { phone, name });
   } catch (e) {
-    return res.status(400).json({ ok: false, success: false, message: e.message });
+    const status = e.code === 'OTP_CHANNELS_DISABLED' || e.code === 'OTP_DELIVERY_FAILED' ? 503 : 400;
+    return res.status(status).json({
+      ok: false,
+      success: false,
+      code: e.code || 'OTP_SEND_FAILED',
+      message: e.message,
+    });
   }
-  return res.json({ ok: true, success: true, expiresInSec: config.otpTtlMinutes * 60 });
+  return res.json({
+    ok: true,
+    success: true,
+    expiresInSec: delivery.expiresInSec || config.otpTtlMinutes * 60,
+    sentVia: delivery.sentVia || [],
+    channels: delivery.channels,
+    masked: delivery.masked,
+  });
 }
 
 router.post('/otp/send', otpLimiter, validateBody(otpSendSchema), asyncHandler(handleOtpSend));

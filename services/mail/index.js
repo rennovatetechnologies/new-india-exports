@@ -1,116 +1,174 @@
-const dns = require('dns');
-const nodemailer = require('nodemailer');
+const { Resend } = require('resend');
 const config = require('../../config');
 const { getDb, requireDb } = require('../../db');
-const { utcnow } = require('../helpers');
+const { utcnow, normalizeEmail } = require('../helpers');
 const { writeAudit } = require('../audit');
 const { renderTemplate } = require('./templates');
 const { logoInlineAttachment } = require('../../assets');
+const {
+  emailChannelEnabled,
+  isOpsRecipient,
+  mergePrefs,
+  templateTopic,
+  topicAllowed,
+} = require('../notify/prefs');
 
-let transporter = null;
+let resendClient = null;
 
-function ipv4Lookup(hostname, _options, callback) {
-  dns.lookup(hostname, { family: 4, all: false }, callback);
+function mailConfigured() {
+  return Boolean(config.resendApiKey);
 }
 
-function smtpCandidates() {
-  if (!config.smtp.user || !config.smtp.pass) return [];
-  const primary = { port: config.smtp.port, secure: config.smtp.secure };
-  const fallback =
-    primary.port === 465
-      ? { port: 587, secure: false }
-      : primary.port === 587
-        ? { port: 465, secure: true }
-        : null;
-  const list = [primary];
-  if (fallback && fallback.port !== primary.port) list.push(fallback);
-  return list;
+function getResend() {
+  if (!config.resendApiKey) return null;
+  if (!resendClient) resendClient = new Resend(config.resendApiKey);
+  return resendClient;
 }
 
-function makeTransport({ port, secure }) {
-  return nodemailer.createTransport({
-    host: config.smtp.host,
-    port,
-    secure,
-    // Railway has no outbound IPv6. Force A-record sockets, not just prefer them.
-    family: 4,
-    lookup: ipv4Lookup,
-    connectionTimeout: 12000,
-    greetingTimeout: 12000,
-    socketTimeout: 20000,
-    requireTLS: !secure,
-    auth: {
-      user: config.smtp.user,
-      pass: config.smtp.pass,
-    },
-    tls: { servername: config.smtp.host },
-  });
+function asAddressList(value) {
+  if (!value) return [];
+  const list = Array.isArray(value) ? value : String(value).split(',');
+  return list.map((s) => String(s).trim()).filter(Boolean);
 }
 
-function getTransporter() {
-  if (transporter) return transporter;
-  const [first] = smtpCandidates();
-  if (!first) return null;
-  transporter = makeTransport(first);
-  return transporter;
+function fromDomain(from) {
+  const raw = String(from || '');
+  const angle = raw.match(/<([^>]+)>/);
+  const addr = (angle ? angle[1] : raw).trim();
+  const at = addr.lastIndexOf('@');
+  return at >= 0 ? addr.slice(at + 1).toLowerCase() : '';
 }
 
-async function sendMailWithFallback(mail) {
-  const candidates = smtpCandidates();
-  if (!candidates.length) {
-    const err = new Error('SMTP not configured');
-    err.code = 'SMTP_NOT_CONFIGURED';
+const CONSUMER_MAIL_DOMAINS = new Set([
+  'gmail.com',
+  'googlemail.com',
+  'yahoo.com',
+  'outlook.com',
+  'hotmail.com',
+  'icloud.com',
+]);
+
+function assertSendableFrom(from) {
+  const domain = fromDomain(from);
+  if (!domain) {
+    const err = new Error('MAIL_FROM is missing or invalid');
+    err.code = 'MAIL_FROM_INVALID';
     throw err;
   }
-  let lastErr;
-  for (const opts of candidates) {
-    const tx = makeTransport(opts);
-    try {
-      const info = await tx.sendMail(mail);
-      transporter = tx;
-      console.info(`SMTP sent via ${config.smtp.host}:${opts.port}`);
-      return info;
-    } catch (e) {
-      lastErr = e;
-      console.warn(`SMTP ${config.smtp.host}:${opts.port} failed: ${e.message}`);
-      try {
-        tx.close();
-      } catch {
-        /* ignore */
-      }
-    }
+  if (CONSUMER_MAIL_DOMAINS.has(domain)) {
+    const err = new Error(
+      `MAIL_FROM must use a Resend-verified domain, not ${domain}. Use VIRASTRA <noreply@virastrainternationalexport.com>`
+    );
+    err.code = 'MAIL_FROM_UNVERIFIED';
+    throw err;
   }
-  throw lastErr;
 }
 
-async function verifySmtp() {
-  const candidates = smtpCandidates();
-  if (!candidates.length) {
-    console.warn('SMTP not configured (SMTP_USER / SMTP_PASS missing)');
+function toResendAttachments(list) {
+  return (list || [])
+    .filter((a) => a && a.filename && a.content)
+    .map((a) => {
+      const att = { filename: a.filename };
+      att.content = Buffer.isBuffer(a.content) ? a.content.toString('base64') : a.content;
+      if (a.contentType) att.contentType = a.contentType;
+      if (a.cid) att.contentId = a.cid;
+      return att;
+    });
+}
+
+async function sendViaResend(mail) {
+  const resend = getResend();
+  if (!resend) {
+    const err = new Error('Resend not configured');
+    err.code = 'MAIL_NOT_CONFIGURED';
+    throw err;
+  }
+  const payload = {
+    from: mail.from,
+    to: asAddressList(mail.to),
+    subject: mail.subject,
+    html: mail.html,
+    text: mail.text,
+  };
+  const bcc = asAddressList(mail.bcc);
+  if (bcc.length) payload.bcc = bcc;
+  if (mail.replyTo) payload.replyTo = mail.replyTo;
+  const attachments = toResendAttachments(mail.attachments);
+  if (attachments.length) payload.attachments = attachments;
+
+  assertSendableFrom(payload.from);
+
+  const { data, error } = await resend.emails.send(payload);
+  if (error) {
+    const err = new Error(error.message || 'Resend send failed');
+    err.code = error.name || 'RESEND_ERROR';
+    err.status = error.statusCode;
+    throw err;
+  }
+  return { messageId: data?.id || null };
+}
+
+async function verifyMail() {
+  if (!mailConfigured()) {
+    console.warn('Resend not configured (RESEND_API_KEY missing)');
     return false;
   }
-  for (const opts of candidates) {
-    const tx = makeTransport(opts);
-    try {
-      await tx.verify();
-      transporter = tx;
-      console.info(`SMTP verify ok ${config.smtp.host}:${opts.port} as ${config.smtp.user}`);
-      return true;
-    } catch (e) {
-      console.warn(`SMTP verify ${config.smtp.host}:${opts.port} failed: ${e.message}`);
-      try {
-        tx.close();
-      } catch {
-        /* ignore */
-      }
+  const resend = getResend();
+  try {
+    const { data, error } = await resend.domains.list();
+    if (error) {
+      console.warn(`Resend verify failed: ${error.message}`);
+      return false;
     }
+    const verified = (data?.data || data || []).filter(
+      (d) => d && ['verified', 'live'].includes(String(d.status || '').toLowerCase())
+    );
+    console.info(`Resend ok as ${config.mailFrom}`);
+    try {
+      assertSendableFrom(config.mailFrom);
+    } catch (e) {
+      console.warn(e.message);
+    }
+    const fromHost = fromDomain(config.mailFrom);
+    const names = verified.map((d) => String(d.name || '').toLowerCase());
+    if (fromHost && names.length && !names.includes(fromHost)) {
+      console.warn(
+        `MAIL_FROM domain ${fromHost} is not verified in Resend (${names.join(', ') || 'none'}).`
+      );
+    }
+    if (!verified.length) {
+      console.warn(
+        'Resend has no verified domain. Add virastrainternationalexport.com at https://resend.com/domains.'
+      );
+    }
+    return true;
+  } catch (e) {
+    console.warn(`Resend verify skipped: ${e.message}`);
+    return false;
   }
-  return false;
+}
+
+async function emailSkipReason(template, to) {
+  if (!mailConfigured() && config.isProduction) {
+    return 'resend_not_configured';
+  }
+  if (!emailChannelEnabled(template)) {
+    return String(template) === 'auth.otp' ? 'email_otp_disabled' : 'email_notifications_disabled';
+  }
+  if (String(template) === 'auth.otp' || isOpsRecipient(to)) return null;
+  const db = getDb();
+  const emailN = normalizeEmail(Array.isArray(to) ? to[0] : to);
+  if (!db || !emailN) return null;
+  const user = await db.collection('users').findOne({ email: emailN });
+  const prefs = mergePrefs(user?.notificationPrefs);
+  if (prefs.email === false) return 'channel_opt_out';
+  if (!topicAllowed(prefs, templateTopic(template))) return 'topic_opt_out';
+  return null;
 }
 
 /**
  * Enqueue email. Never blocks HTTP >2s — fires send in background.
- * @returns {{ outboxId: string, status: string }}
+ * @returns {{ outboxId: string, status: string, skipReason?: string }}
  */
 async function enqueueEmail({
   to,
@@ -121,18 +179,22 @@ async function enqueueEmail({
   bcc,
   replyTo,
   actor,
+  skipWhatsApp = false,
 }) {
   const db = requireDb();
   const rendered = renderTemplate(template, vars);
+  const skipReason = await emailSkipReason(template, to);
   const doc = {
-    status: 'queued',
+    status: skipReason ? 'skipped' : 'queued',
     template,
     to: Array.isArray(to) ? to : [to],
     bcc: bcc ? (Array.isArray(bcc) ? bcc : [bcc]) : [],
+    replyTo: replyTo || config.mailReplyTo || null,
     subject: subject || rendered.subject,
     html: rendered.html,
     text: rendered.text,
     vars,
+    skipReason: skipReason || null,
     attachments: (attachments || []).map((a) => ({
       filename: a.filename,
       contentType: a.contentType || 'application/pdf',
@@ -142,7 +204,7 @@ async function enqueueEmail({
     })),
     attempts: 0,
     providerMessageId: null,
-    lastError: null,
+    lastError: skipReason || null,
     createdAt: utcnow(),
     updatedAt: utcnow(),
     sentAt: null,
@@ -150,6 +212,26 @@ async function enqueueEmail({
 
   const result = await db.collection('email_outbox').insertOne(doc);
   const outboxId = String(result.insertedId);
+
+  if (!skipWhatsApp) {
+    setImmediate(() => {
+      try {
+        const { maybeEnqueueWhatsAppForEmail } = require('../whatsapp');
+        maybeEnqueueWhatsAppForEmail({ to, template, vars, actor }).catch((e) => {
+          console.warn('whatsapp fan-out failed:', e.message);
+        });
+      } catch (e) {
+        console.warn('whatsapp fan-out unavailable:', e.message);
+      }
+    });
+  }
+
+  if (skipReason) {
+    if (!config.isProduction) {
+      console.info(`[DEV MAIL skipped:${skipReason}] to=${doc.to.join(',')} template=${template}`);
+    }
+    return { outboxId, status: 'skipped', skipReason };
+  }
 
   // Attach buffers only for this process send (not persisted as binary in mongo for size)
   const sendAttachments = (attachments || [])
@@ -178,14 +260,14 @@ async function sendOutbox(outboxId, attachments = [], actor) {
   const _id = mongoose.isValidObjectId(outboxId) ? new mongoose.Types.ObjectId(outboxId) : null;
   if (!_id) return;
   const doc = await db.collection('email_outbox').findOne({ _id });
-  if (!doc || doc.status === 'sent') return;
+  if (!doc || doc.status === 'sent' || doc.status === 'skipped') return;
 
   await db.collection('email_outbox').updateOne(
     { _id },
     { $inc: { attempts: 1 }, $set: { updatedAt: utcnow() } }
   );
 
-  if (!smtpCandidates().length) {
+  if (!mailConfigured()) {
     if (!config.isProduction) {
       console.info(`[DEV MAIL] to=${doc.to.join(',')} subject=${doc.subject} template=${doc.template}`);
       await db.collection('email_outbox').updateOne(
@@ -210,13 +292,13 @@ async function sendOutbox(outboxId, attachments = [], actor) {
       {
         $set: {
           status: 'failed',
-          lastError: 'SMTP not configured',
+          lastError: 'Resend not configured',
           updatedAt: utcnow(),
         },
       }
     );
     await writeAudit(actor || { email: 'system', role: 'system' }, 'email.failed', {
-      meta: { outboxId, template: doc.template, error: 'SMTP not configured' },
+      meta: { outboxId, template: doc.template, error: 'Resend not configured' },
       tone: 'danger',
       success: false,
     });
@@ -226,11 +308,11 @@ async function sendOutbox(outboxId, attachments = [], actor) {
   try {
     const logo = logoInlineAttachment();
     const mailAttachments = logo ? [logo, ...(attachments || [])] : attachments;
-    const info = await sendMailWithFallback({
+    const info = await sendViaResend({
       from: config.mailFrom,
-      to: doc.to.join(', '),
-      bcc: doc.bcc?.length ? doc.bcc.join(', ') : undefined,
-      replyTo: config.mailReplyTo,
+      to: doc.to,
+      bcc: doc.bcc,
+      replyTo: doc.replyTo || config.mailReplyTo,
       subject: doc.subject,
       html: doc.html,
       text: doc.text,
@@ -290,4 +372,11 @@ async function retryFailed(limit = 20) {
   return rows.length;
 }
 
-module.exports = { enqueueEmail, sendOutbox, retryFailed, getTransporter, verifySmtp };
+module.exports = {
+  enqueueEmail,
+  sendOutbox,
+  retryFailed,
+  mailConfigured,
+  verifyMail,
+  verifySmtp: verifyMail,
+};

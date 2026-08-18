@@ -173,6 +173,8 @@ async function ensureIndexes() {
     await db.collection('orders').createIndex({ razorpayOrderId: 1 }, { unique: true });
     await ensureAuditLogTtl(db);
     await db.collection('email_outbox').createIndex({ status: 1, updatedAt: 1 });
+    await db.collection('whatsapp_outbox').createIndex({ status: 1, updatedAt: 1 });
+    await db.collection('whatsapp_outbox').createIndex({ toEmail: 1, createdAt: -1 });
     await db.collection('idempotency_keys').createIndex({ keyHash: 1 }, { unique: true });
     try {
       await db.collection('idempotency_keys').createIndex({ expiresAt: 1 }, { expireAfterSeconds: 0 });
