@@ -40,7 +40,8 @@ app.use(
   cors({
     origin(origin, cb) {
       if (config.corsOriginAllowed(origin)) return cb(null, true);
-      return cb(new Error(`CORS blocked: ${origin}`));
+      console.warn(`CORS blocked origin: ${origin}`);
+      return cb(null, false);
     },
     credentials: true,
   })

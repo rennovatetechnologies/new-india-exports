@@ -27,7 +27,28 @@ function parseJsonEnv(name) {
 
 /** Stable Railway production hosts (custom domain can override via env). */
 const FRONTEND_PRODUCTION_URL = 'https://india-exports-hub-53-production.up.railway.app';
+const FRONTEND_PUBLIC_URL = 'https://www.virastrainternationalexport.com';
+const FRONTEND_CUSTOM_ORIGINS = [
+  FRONTEND_PUBLIC_URL,
+  'https://virastrainternationalexport.com',
+];
 const onRailway = Boolean(process.env.RAILWAY_ENVIRONMENT || process.env.RAILWAY_PUBLIC_DOMAIN);
+
+function uniqueOrigins(...lists) {
+  const seen = new Set();
+  const out = [];
+  for (const list of lists) {
+    for (const raw of list || []) {
+      const origin = String(raw || '')
+        .trim()
+        .replace(/\/$/, '');
+      if (!origin || seen.has(origin)) continue;
+      seen.add(origin);
+      out.push(origin);
+    }
+  }
+  return out;
+}
 
 const seller = {
   legalName: 'New India Export',
@@ -57,9 +78,14 @@ const config = {
   mongodbDbNameProd: process.env.MONGODB_DB_NAME_PROD || 'virastra_prod',
   jwtSecret: process.env.JWT_SECRET || 'dev-only-change-me-in-production',
   jwtExpireHours: parseInt(process.env.JWT_EXPIRE_HOURS || '2', 10),
-  corsOrigins: splitOrigins(
-    process.env.CORS_ORIGINS ||
-      `http://localhost:5173,http://127.0.0.1:5173,${FRONTEND_PRODUCTION_URL}`
+  corsOrigins: uniqueOrigins(
+    splitOrigins(
+      process.env.CORS_ORIGINS ||
+        `http://localhost:5173,http://127.0.0.1:5173,${FRONTEND_PRODUCTION_URL}`
+    ),
+    [process.env.FRONTEND_URL],
+    FRONTEND_CUSTOM_ORIGINS,
+    [FRONTEND_PRODUCTION_URL]
   ),
   razorpayKeyId: process.env.RAZORPAY_KEY_ID || null,
   razorpayKeySecret: process.env.RAZORPAY_KEY_SECRET || null,
@@ -110,7 +136,7 @@ const config = {
   installmentWindowDays: parseInt(process.env.INSTALLMENT_WINDOW_DAYS || '30', 10),
   frontendUrl: (
     process.env.FRONTEND_URL ||
-    (onRailway ? FRONTEND_PRODUCTION_URL : 'http://localhost:5173')
+    (onRailway ? FRONTEND_PUBLIC_URL : 'http://localhost:5173')
   ).replace(/\/$/, ''),
   enableDocs: envBool('ENABLE_DOCS', true),
   enableLegacyShipment: envBool('ENABLE_LEGACY_SHIPMENT', false),
@@ -179,11 +205,18 @@ const config = {
   corsOriginAllowed(origin) {
     if (!origin) return true;
     if (this.corsOrigins.includes('*')) return true;
-    if (this.corsOrigins.includes(origin)) return true;
+    const normalized = String(origin).replace(/\/$/, '');
+    if (this.corsOrigins.includes(origin) || this.corsOrigins.includes(normalized)) return true;
     try {
-      const host = new URL(origin).hostname;
+      const host = new URL(origin).hostname.toLowerCase();
       if (host === 'localhost' || host === '127.0.0.1') return true;
       if (host.endsWith('.up.railway.app') || host.endsWith('.railway.app')) return true;
+      if (
+        host === 'virastrainternationalexport.com' ||
+        host === 'www.virastrainternationalexport.com'
+      ) {
+        return true;
+      }
     } catch {
       return false;
     }
