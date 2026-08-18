@@ -57,13 +57,6 @@ router.get(
   asyncHandler(async (req, res) => {
     const db = requireDb();
     const query = {};
-    if (req.user.role === 'operations') {
-      query.$or = [
-        { opsEmail: normalizeEmail(req.user.email) },
-        { opsEmail: null },
-        { opsEmail: '' },
-      ];
-    }
     if (req.query.status) query.status = String(req.query.status);
     if (req.query.kycStatus) query.kycStatus = String(req.query.kycStatus);
     if (req.query.opsEmail) query.opsEmail = req.query.opsEmail;
@@ -88,11 +81,7 @@ router.get(
   asyncHandler(async (req, res) => {
     const doc = await cases.getCaseById(req.params.caseId);
     if (!doc) return res.status(404).json({ success: false, message: 'Case not found' });
-    if (!cases.canAccessCase(req.user, doc) && req.user.role !== 'admin' && req.user.role !== 'operations') {
-      return res.status(403).json({ success: false, message: 'Forbidden' });
-    }
-    // operations can view all for queue; tighten only if assigned filter needed — admin all, ops all for v1
-    if (req.user.role === 'customer' && !cases.canAccessCase(req.user, doc)) {
+    if (!cases.canAccessCase(req.user, doc)) {
       return res.status(403).json({ success: false, message: 'Forbidden' });
     }
     return res.json({ success: true, data: doc, ...doc });
@@ -104,7 +93,7 @@ router.patch(
   requireRoles('operations', 'admin'),
   validateBody(assignCaseSchema),
   asyncHandler(async (req, res) => {
-    const opsEmail = req.body.opsEmail;
+    const opsEmail = normalizeEmail(req.body.opsEmail);
     const roster = await cases.getOpsRoster();
     const hit = roster.find((o) => o.email === opsEmail);
     const doc = await cases.updateCase(

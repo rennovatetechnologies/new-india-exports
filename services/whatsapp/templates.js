@@ -10,7 +10,8 @@ function firstName(vars) {
 
 function supportLine() {
   const s = config.supportEmail || config.mailReplyTo || 'support@virastrainternationalexport.com';
-  return `Need help? ${s}`;
+  const wa = config.supportWhatsAppDisplay || '+91 99670 84149';
+  return `Need help? ${s} or WhatsApp ${wa}`;
 }
 
 function signOff() {
@@ -265,6 +266,7 @@ ${signOff()}`;
 function renderWhatsApp(template, vars = {}) {
   const v = {
     supportEmail: config.supportEmail,
+    supportWhatsApp: config.supportWhatsAppDisplay,
     appName: config.appName,
     ...vars,
   };

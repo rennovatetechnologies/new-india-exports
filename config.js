@@ -147,6 +147,12 @@ const config = {
   opsInbox: process.env.OPS_INBOX || 'ops@virastrainternationalexport.com',
   adminInbox: process.env.ADMIN_INBOX || 'admin@virastrainternationalexport.com',
   supportEmail: process.env.SUPPORT_EMAIL || 'support@virastrainternationalexport.com',
+  supportWhatsApp: (() => {
+    const d = String(process.env.SUPPORT_WHATSAPP || '9967084149').replace(/\D/g, '');
+    if (d.length === 12 && d.startsWith('91')) return d.slice(2);
+    if (d.length >= 10) return d.slice(-10);
+    return '9967084149';
+  })(),
   appName: process.env.APP_NAME || 'VIRASTRA INTERNATIONAL EXPORT',
 
   googleDrive: {
@@ -221,6 +227,13 @@ const config = {
       return false;
     }
     return false;
+  },
+  get supportWhatsAppDisplay() {
+    const d = this.supportWhatsApp || '9967084149';
+    return `+91 ${d.slice(0, 5)} ${d.slice(5)}`;
+  },
+  get supportWhatsAppE164() {
+    return `91${this.supportWhatsApp || '9967084149'}`;
   },
   get workshopInr() {
     if (process.env.WORKSHOP_AMOUNT_INR) return this.workshopAmountInr;

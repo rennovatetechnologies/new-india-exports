@@ -3,4 +3,4 @@ Hi {{greetingName}},
 Your staff access request was not approved.
 Note: {{reason}}
 
-Contact {{supportEmail}} if you need clarity.
+Contact {{supportEmail}} or WhatsApp {{supportWhatsApp}} if you need clarity.

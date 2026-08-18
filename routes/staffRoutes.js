@@ -7,6 +7,7 @@ const { normalizeEmail, utcnow, cleanDoc } = require('../services/helpers');
 const { asyncHandler } = require('../utils/asyncHandler');
 const { enqueueEmail } = require('../services/mail');
 const config = require('../config');
+const cases = require('../services/cases');
 const {
   staffAccessPatchSchema,
   staffUserPatchSchema,
@@ -92,6 +93,9 @@ router.patch(
           createdAt: utcnow(),
         });
       }
+      try {
+        await cases.ensureOpsOnRoster(email, doc.name);
+      } catch (_) {}
       try {
         await enqueueEmail({
           to: email,

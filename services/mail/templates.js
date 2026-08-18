@@ -212,6 +212,8 @@ function layout({ title, preheader, bodyHtml, ctaUrl, ctaLabel, attachmentHtml }
             <p style="margin:28px 0 0;font-size:13px;line-height:1.55;color:#78716C">
               Need help? Write to us at
               <a href="mailto:${support}" style="color:#1A2E28;text-decoration:underline">${support}</a>
+              or WhatsApp
+              <a href="https://wa.me/${escapeHtml(config.supportWhatsAppE164)}" style="color:#1A2E28;text-decoration:underline">${escapeHtml(config.supportWhatsAppDisplay)}</a>
               — we are happy to assist.
             </p>
           </td>
@@ -741,7 +743,7 @@ function builtInBodies(template, v) {
             { label: 'Reference', value: v.bookingId || v.paymentId },
             { label: 'Email', value: v.customerEmail },
           ])}
-          <p style="margin:16px 0 0">If your enquiry is urgent, reply to this email with your preferred call time.</p>`,
+          <p style="margin:16px 0 0">If your enquiry is urgent, WhatsApp ${config.supportWhatsAppDisplay} or reply to this email with your preferred call time.</p>`,
         text: `Hi ${hi},\n\nWe received your shipment enquiry. Our team will contact you soon.\nReference: ${v.bookingId || v.paymentId || ''}`,
       };
 
@@ -848,6 +850,8 @@ function renderTemplate(template, vars = {}) {
   const v = {
     year: new Date().getUTCFullYear(),
     supportEmail: config.supportEmail,
+    supportWhatsApp: config.supportWhatsAppDisplay,
+    supportWhatsAppE164: config.supportWhatsAppE164,
     appName: config.appName,
     ...vars,
   };
@@ -921,7 +925,7 @@ function renderTemplate(template, vars = {}) {
   if (ctaUrl) {
     text = `${text}\n\n${ctaLabel}: ${ctaUrl}`;
   }
-  text = `${text}\n\nNeed help? ${config.supportEmail || config.mailReplyTo}\n© ${v.year} New India Export`;
+  text = `${text}\n\nNeed help? ${config.supportEmail || config.mailReplyTo} or WhatsApp ${config.supportWhatsAppDisplay}\n© ${v.year} New India Export`;
 
   return { subject, html, text, attachmentsMeta: TEMPLATE_ATTACHMENTS[template] || null };
 }

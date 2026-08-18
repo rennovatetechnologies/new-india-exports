@@ -220,17 +220,50 @@ function publicCase(doc) {
   };
 }
 
-async function getOpsRoster() {
+function mapRosterEntry(o) {
+  const email = normalizeEmail(o?.email);
+  if (!email) return null;
+  return { email, name: String(o.name || '').trim() || email };
+}
+
+async function rosterFromConfig() {
   const db = getDb();
   if (!db) return DEFAULT_OPS_ROSTER.map((x) => ({ ...x }));
   const cfg = await db.collection('config').findOne({ key: 'ops_roster' });
   if (cfg?.value && Array.isArray(cfg.value) && cfg.value.length) {
-    return cfg.value.map((o) => ({
-      email: normalizeEmail(o.email),
-      name: String(o.name || '').trim() || normalizeEmail(o.email),
-    }));
+    return cfg.value.map(mapRosterEntry).filter(Boolean);
   }
   return DEFAULT_OPS_ROSTER.map((x) => ({ ...x }));
+}
+
+/** Config roster plus every active operations/admin user (so a newly approved operator is claimable). */
+async function getOpsRoster() {
+  const byEmail = new Map();
+  for (const o of await rosterFromConfig()) byEmail.set(o.email, o);
+  const db = getDb();
+  if (db) {
+    const users = await db
+      .collection('users')
+      .find({
+        role: { $in: ['operations', 'admin'] },
+        status: { $in: ['Active', 'Approved'] },
+      })
+      .toArray();
+    for (const u of users) {
+      const entry = mapRosterEntry(u);
+      if (entry && !byEmail.has(entry.email)) byEmail.set(entry.email, entry);
+    }
+  }
+  return [...byEmail.values()];
+}
+
+async function ensureOpsOnRoster(email, name) {
+  const entry = mapRosterEntry({ email, name });
+  if (!entry) return getOpsRoster();
+  const roster = await rosterFromConfig();
+  if (roster.some((o) => o.email === entry.email)) return getOpsRoster();
+  await saveOpsRoster([...roster, entry]);
+  return getOpsRoster();
 }
 
 async function saveOpsRoster(list) {
@@ -410,11 +443,7 @@ async function markPlanPaid(caseDoc, { planId, amountPaid, paymentId, purpose },
 
 function canAccessCase(user, caseDoc) {
   if (!user || !caseDoc) return false;
-  if (user.role === 'admin') return true;
-  if (user.role === 'operations') {
-    if (!caseDoc.opsEmail) return true;
-    return normalizeEmail(caseDoc.opsEmail) === normalizeEmail(user.email);
-  }
+  if (user.role === 'admin' || user.role === 'operations') return true;
   return normalizeEmail(caseDoc.customerEmail) === normalizeEmail(user.email);
 }
 
@@ -433,6 +462,7 @@ module.exports = {
   isPlanExpired,
   getOpsRoster,
   saveOpsRoster,
+  ensureOpsOnRoster,
   pickDefaultOps,
   getOrCreateCaseForEmail,
   getCaseById,
