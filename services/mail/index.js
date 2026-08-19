@@ -57,7 +57,7 @@ function assertSendableFrom(from) {
   }
   if (CONSUMER_MAIL_DOMAINS.has(domain)) {
     const err = new Error(
-      `MAIL_FROM must use a Resend-verified domain, not ${domain}. Use VIRASTRA <noreply@virastrainternationalexport.com>`
+      `MAIL_FROM must use a Resend-verified domain, not ${domain}. Use VIRASTRA by New India Export <noreply@virastrainternationalexport.com>`
     );
     err.code = 'MAIL_FROM_UNVERIFIED';
     throw err;

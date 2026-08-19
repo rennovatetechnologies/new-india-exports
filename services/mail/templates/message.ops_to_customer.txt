@@ -1,5 +1,5 @@
 Hi {{greetingName}},
 
-Message from your VIRASTRA desk ({{caseId}}):
+Message from your VIRASTRA by New India Export desk ({{caseId}}):
 
 {{body}}

@@ -14,6 +14,15 @@ function envBool(name, fallback = false) {
   return ['1', 'true', 'yes', 'on'].includes(String(v).toLowerCase());
 }
 
+/** Empty / "none" disables the value instead of falling back. */
+function envStringAllowBlank(name, fallback) {
+  const v = process.env[name];
+  if (v == null) return fallback;
+  const s = String(v).trim();
+  if (!s || ['none', 'false', 'off'].includes(s.toLowerCase())) return '';
+  return s;
+}
+
 function parseJsonEnv(name) {
   const raw = process.env[name];
   if (raw == null || String(raw).trim() === '') return null;
@@ -52,7 +61,7 @@ function uniqueOrigins(...lists) {
 
 const seller = {
   legalName: 'New India Export',
-  brandName: 'VIRASTRA INTERNATIONAL EXPORT',
+  brandName: 'VIRASTRA by New India Export',
   gstin: '27AXGPY3435Q1ZK',
   addressLines: [
     '1ST FLOOR SHOP NO M-02',
@@ -105,7 +114,10 @@ const config = {
     apiVersion: process.env.WHATSAPP_API_VERSION || 'v21.0',
     graphBase: (process.env.WHATSAPP_GRAPH_BASE || 'https://graph.facebook.com').replace(/\/$/, ''),
     defaultCountryCode: String(process.env.WHATSAPP_DEFAULT_COUNTRY_CODE || '91').replace(/\D/g, '') || '91',
-    otpTemplate: process.env.WHATSAPP_OTP_TEMPLATE || 'virastra_otp',
+    otpTemplate: envStringAllowBlank(
+      'WHATSAPP_OTP_TEMPLATE',
+      process.env.APP_ENV === 'production' ? 'virastra_otp' : ''
+    ),
     otpTemplateLang: process.env.WHATSAPP_OTP_TEMPLATE_LANG || 'en',
     otpButton: String(process.env.WHATSAPP_OTP_BUTTON || 'copy_code').toLowerCase(),
     otpBodyParams: Math.max(1, parseInt(process.env.WHATSAPP_OTP_BODY_PARAMS || '1', 10)),
@@ -142,7 +154,7 @@ const config = {
   enableLegacyShipment: envBool('ENABLE_LEGACY_SHIPMENT', false),
 
   resendApiKey: process.env.RESEND_API_KEY || '',
-  mailFrom: process.env.MAIL_FROM || 'VIRASTRA <noreply@virastrainternationalexport.com>',
+  mailFrom: process.env.MAIL_FROM || 'VIRASTRA by New India Export <noreply@virastrainternationalexport.com>',
   mailReplyTo: process.env.MAIL_REPLY_TO || 'support@virastrainternationalexport.com',
   opsInbox: process.env.OPS_INBOX || 'ops@virastrainternationalexport.com',
   adminInbox: process.env.ADMIN_INBOX || 'admin@virastrainternationalexport.com',
@@ -153,7 +165,7 @@ const config = {
     if (d.length >= 10) return d.slice(-10);
     return '9967084149';
   })(),
-  appName: process.env.APP_NAME || 'VIRASTRA INTERNATIONAL EXPORT',
+  appName: process.env.APP_NAME || 'VIRASTRA by New India Export',
 
   googleDrive: {
     // Legacy Drive settings (unused; files now go to GCS). Kept so old env files still parse.

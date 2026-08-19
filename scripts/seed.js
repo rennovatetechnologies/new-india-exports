@@ -69,7 +69,7 @@ const PREMIUM_STAGES = [
   ...STANDARD_STAGES,
   { id: 'company', label: 'Company Formation Assistance', description: 'Private Limited, LLP, or OPC formation' },
   { id: 'trademark', label: 'Trademark Application Assistance', description: 'Trademark filing support' },
-  { id: 'virastra', label: 'Virastra Digital Platform Assistance', description: 'Onboarding to Virastra by New India Export' },
+  { id: 'virastra', label: 'VIRASTRA Digital Platform Assistance', description: 'Onboarding to VIRASTRA by New India Export' },
   { id: 'shipment', label: 'Pre & Post-Shipment Guidance', description: 'Shipment workflow, documentation flow, and cost analysis' },
 ];
 
@@ -163,7 +163,7 @@ const DEFAULT_PLANS = [
     featured: false,
     features: [
       'Company formation (Pvt Ltd / LLP / OPC)',
-      'Virastra digital platform assistance',
+      'VIRASTRA digital platform assistance',
       'Shipment support & cost analysis (up to 3)',
       'Expert guidance & exhibition networking',
     ],
@@ -183,7 +183,7 @@ const DEFAULT_PLANS = [
       { group: 'Government Portal & Compliance Support', label: 'IFSC / PFMS Registration & Approval', included: true },
       { group: 'Company Formation & Intellectual Property', label: 'Company Formation Assistance (Private Limited, LLP, OPC)', included: true },
       { group: 'Company Formation & Intellectual Property', label: 'Trademark Application Assistance', included: true },
-      { group: 'Digital Export Platform', label: 'Virastra by New India Export – Digital Platform Assistance', included: true },
+      { group: 'Digital Export Platform', label: 'VIRASTRA by New India Export – Digital Platform Assistance', included: true },
       { group: 'Pre & Post-Shipment Support', label: 'Pre-Shipment & Post-Shipment Guidance', included: true },
       { group: 'Pre & Post-Shipment Support', label: 'Shipment Process Charts & Workflow', included: true },
       { group: 'Pre & Post-Shipment Support', label: 'Export Documentation Flow & Process Guidance', included: true },

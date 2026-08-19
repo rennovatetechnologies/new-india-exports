@@ -58,11 +58,11 @@ const TEMPLATE_ATTACHMENTS = {
 };
 
 const SUBJECTS = {
-  'auth.otp': 'Your VIRASTRA verification code',
+  'auth.otp': 'Your VIRASTRA by New India Export verification code',
   'staff.access_submitted': 'We received your staff access request',
   'staff.access_approved': 'Welcome aboard — your staff access is active',
   'staff.access_rejected': 'Update on your staff access request',
-  'staff.access_suspended': 'Your VIRASTRA staff access has been suspended',
+  'staff.access_suspended': 'Your VIRASTRA by New India Export staff access has been suspended',
   'payment.receipt': 'Payment confirmed — {{planName}}',
   'payment.invoice': 'Tax Invoice {{invoiceNumber}} — New India Export',
   'payment.failed': 'We could not complete your payment',
@@ -80,7 +80,7 @@ const SUBJECTS = {
   'doc.uploaded_ops': 'Customer uploaded a document — {{caseId}}',
   'doc.delivered_customer': 'A new document is ready in your workspace',
   'message.customer_to_ops': 'New message from {{name}}',
-  'message.ops_to_customer': 'Message from your VIRASTRA desk',
+  'message.ops_to_customer': 'Message from your VIRASTRA by New India Export desk',
   'event.registered': 'You are registered: {{title}}',
   'event.cancelled': 'Registration cancelled: {{title}}',
   'event.rescheduled': 'Event update: {{title}} has been rescheduled',
@@ -200,7 +200,6 @@ function layout({ title, preheader, bodyHtml, ctaUrl, ctaLabel, attachmentHtml }
         <tr>
           <td style="padding:22px 28px 18px;border-bottom:1px solid #EFE8DC;background:linear-gradient(180deg,#FFFcf7 0%,#F9F4EA 100%)">
             <img src="cid:${LOGO_CID}" alt="${brand}" width="200" height="70" style="display:block;width:200px;height:auto;max-width:200px;border:0;outline:none;text-decoration:none"/>
-            <div style="margin-top:8px;font-size:12px;color:#A8A29E">New India Export</div>
           </td>
         </tr>
         <tr>
@@ -220,8 +219,8 @@ function layout({ title, preheader, bodyHtml, ctaUrl, ctaLabel, attachmentHtml }
         </tr>
         <tr>
           <td style="padding:16px 28px;background:#F5F0E6;border-top:1px solid #E7DFD2;font-size:11px;line-height:1.5;color:#A8A29E">
-            © ${year} New India Export · ${brand}<br/>
-            This email was sent regarding your VIRASTRA account. Please do not share OTPs or payment links with anyone.
+            © ${year} ${brand}<br/>
+            This email was sent regarding your VIRASTRA by New India Export account. Please do not share OTPs or payment links with anyone.
           </td>
         </tr>
       </table>
@@ -257,13 +256,13 @@ function builtInBodies(template, v) {
         ctaUrl: null,
         html: `
           <p style="margin:0 0 14px">Hi ${hi},</p>
-          <p style="margin:0 0 14px">Use this one-time code to sign in securely to VIRASTRA. It expires in <strong>${escapeHtml(v.expiresMinutes || 10)} minutes</strong>.</p>
+          <p style="margin:0 0 14px">Use this one-time code to sign in securely to VIRASTRA by New India Export. It expires in <strong>${escapeHtml(v.expiresMinutes || 10)} minutes</strong>.</p>
           <div style="margin:22px 0;padding:18px;text-align:center;background:#1A2E28;border-radius:8px">
             <div style="font-size:12px;letter-spacing:0.14em;text-transform:uppercase;color:#D6C59A;margin-bottom:8px">Verification code</div>
             <div style="font-size:32px;letter-spacing:0.28em;font-weight:700;color:#FFFcf7">${escapeHtml(v.otpCode || '------')}</div>
           </div>
           <p style="margin:0;font-size:13px;color:#78716C">If you did not request this code, you can safely ignore this email. Never share this code with anyone.</p>`,
-        text: `Hi ${hi},\n\nYour VIRASTRA verification code is ${v.otpCode || '------'}.\nIt is valid for ${v.expiresMinutes || 10} minutes.\n\nIf you did not request this, ignore this email.`,
+        text: `Hi ${hi},\n\nYour VIRASTRA by New India Export verification code is ${v.otpCode || '------'}.\nIt is valid for ${v.expiresMinutes || 10} minutes.\n\nIf you did not request this, ignore this email.`,
       };
 
     case 'staff.access_submitted':
@@ -276,7 +275,7 @@ function builtInBodies(template, v) {
              <p style="margin:0 0 14px"><strong>${escapeHtml(v.customerName || v.name || 'Applicant')}</strong> has requested access.</p>
              <p style="margin:0;color:#78716C">${escapeHtml(v.message)}</p>`
           : `<p style="margin:0 0 14px">Hi ${hi},</p>
-             <p style="margin:0 0 14px">Thank you for applying for VIRASTRA staff access. Our admin team has received your request and will review it shortly.</p>
+             <p style="margin:0 0 14px">Thank you for applying for VIRASTRA by New India Export staff access. Our admin team has received your request and will review it shortly.</p>
              <p style="margin:0">You will get another email as soon as a decision is made. No further action is needed right now.</p>`,
         text: v.message
           ? `New staff access request from ${v.customerName || v.name || 'applicant'}. ${v.message}`
@@ -302,7 +301,7 @@ function builtInBodies(template, v) {
         ctaUrl: null,
         html: `
           <p style="margin:0 0 14px">Hi ${hi},</p>
-          <p style="margin:0 0 14px">Thank you for your interest in joining the VIRASTRA team. After review, we are unable to approve your access request at this time.</p>
+          <p style="margin:0 0 14px">Thank you for your interest in joining the VIRASTRA by New India Export team. After review, we are unable to approve your access request at this time.</p>
           ${v.reason ? `<p style="margin:0 0 14px"><strong>Note from admin:</strong> ${escapeHtml(v.reason)}</p>` : ''}
           <p style="margin:0">If you believe this is a mistake, contact us at ${support}.</p>`,
         text: `Hi ${hi},\n\nYour staff access request was not approved.${v.reason ? `\nNote: ${v.reason}` : ''}\n\nContact ${support} if you need clarity.`,
@@ -315,7 +314,7 @@ function builtInBodies(template, v) {
         ctaUrl: null,
         html: `
           <p style="margin:0 0 14px">Hi ${hi},</p>
-          <p style="margin:0 0 14px">Your VIRASTRA staff access has been suspended. You will not be able to sign in until an administrator restores it.</p>
+          <p style="margin:0 0 14px">Your VIRASTRA by New India Export staff access has been suspended. You will not be able to sign in until an administrator restores it.</p>
           ${v.reason ? `<p style="margin:0 0 14px"><strong>Reason:</strong> ${escapeHtml(v.reason)}</p>` : ''}
           <p style="margin:0">Questions? Reach ${support}.</p>`,
         text: `Hi ${hi},\n\nYour staff access has been suspended.${v.reason ? `\nReason: ${v.reason}` : ''}\n\nContact ${support}.`,
@@ -575,7 +574,7 @@ function builtInBodies(template, v) {
         ctaLabel: 'Upload document',
         html: `
           <p style="margin:0 0 14px">Hi ${hi},</p>
-          <p style="margin:0 0 14px">Your VIRASTRA desk has requested a document to keep your onboarding moving.</p>
+          <p style="margin:0 0 14px">Your VIRASTRA by New India Export desk has requested a document to keep your onboarding moving.</p>
           ${detailRows([
             { label: 'Document', value: v.label || 'Requested document' },
             { label: 'Case', value: v.caseId },
@@ -606,11 +605,11 @@ function builtInBodies(template, v) {
         title: 'New document in your workspace',
         preheader: v.label
           ? `Your desk shared: ${v.label}`
-          : 'Your VIRASTRA desk shared a file with you.',
+          : 'Your VIRASTRA by New India Export desk shared a file with you.',
         ctaLabel: 'Open documents',
         html: `
           <p style="margin:0 0 14px">Hi ${hi},</p>
-          <p style="margin:0 0 14px">Your VIRASTRA desk has shared a new document with you${v.caseId ? ` on case <strong>${escapeHtml(v.caseId)}</strong>` : ''}.</p>
+          <p style="margin:0 0 14px">Your VIRASTRA by New India Export desk has shared a new document with you${v.caseId ? ` on case <strong>${escapeHtml(v.caseId)}</strong>` : ''}.</p>
           ${detailRows([
             { label: 'Document', value: v.label || 'Document' },
             { label: 'Note from ops', value: v.note },
@@ -633,15 +632,15 @@ function builtInBodies(template, v) {
 
     case 'message.ops_to_customer':
       return {
-        title: 'Message from your VIRASTRA desk',
+        title: 'Message from your VIRASTRA by New India Export desk',
         preheader: 'You have a new update from operations.',
         ctaLabel: 'View conversation',
         html: `
           <p style="margin:0 0 14px">Hi ${hi},</p>
-          <p style="margin:0 0 14px">Your VIRASTRA desk sent you a message${v.caseId ? ` regarding case <strong>${escapeHtml(v.caseId)}</strong>` : ''}.</p>
+          <p style="margin:0 0 14px">Your VIRASTRA by New India Export desk sent you a message${v.caseId ? ` regarding case <strong>${escapeHtml(v.caseId)}</strong>` : ''}.</p>
           <div style="margin:16px 0;padding:14px 16px;background:#F5F5F4;border-radius:6px;color:#1C1917;white-space:pre-wrap">${escapeHtml(v.body || v.preview || '')}</div>
           <p style="margin:0">You can reply anytime from your dashboard messaging panel.</p>`,
-        text: `Hi ${hi},\n\nMessage from your VIRASTRA desk${v.caseId ? ` (${v.caseId})` : ''}:\n\n${v.body || v.preview || ''}\n\nReply from your dashboard.`,
+        text: `Hi ${hi},\n\nMessage from your VIRASTRA by New India Export desk${v.caseId ? ` (${v.caseId})` : ''}:\n\n${v.body || v.preview || ''}\n\nReply from your dashboard.`,
       };
 
     case 'event.registered':
@@ -735,10 +734,10 @@ function builtInBodies(template, v) {
       return {
         title: 'We received your enquiry',
         preheader: 'Our team will get back to you shortly.',
-        ctaLabel: 'Visit VIRASTRA',
+        ctaLabel: 'Visit VIRASTRA by New India Export',
         html: `
           <p style="margin:0 0 14px">Hi ${hi},</p>
-          <p style="margin:0 0 14px">Thank you for sharing your shipment enquiry with New India Export. Our team has received it and will contact you shortly with next steps.</p>
+          <p style="margin:0 0 14px">Thank you for sharing your shipment enquiry with VIRASTRA by New India Export. Our team has received it and will contact you shortly with next steps.</p>
           ${detailRows([
             { label: 'Reference', value: v.bookingId || v.paymentId },
             { label: 'Email', value: v.customerEmail },
@@ -800,10 +799,10 @@ function builtInBodies(template, v) {
 
     default:
       return {
-        title: fill(SUBJECTS[template] || 'Update from VIRASTRA', v),
-        preheader: v.message || 'You have an update from VIRASTRA.',
-        html: `<p style="margin:0 0 14px">Hi ${hi},</p><p style="margin:0">${escapeHtml(v.message || 'You have a new notification from VIRASTRA.')}</p>`,
-        text: `Hi ${hi},\n\n${v.message || 'You have a new notification from VIRASTRA.'}`,
+        title: fill(SUBJECTS[template] || 'Update from VIRASTRA by New India Export', v),
+        preheader: v.message || 'You have an update from VIRASTRA by New India Export.',
+        html: `<p style="margin:0 0 14px">Hi ${hi},</p><p style="margin:0">${escapeHtml(v.message || 'You have a new notification from VIRASTRA by New India Export.')}</p>`,
+        text: `Hi ${hi},\n\n${v.message || 'You have a new notification from VIRASTRA by New India Export.'}`,
       };
   }
 }
@@ -925,7 +924,7 @@ function renderTemplate(template, vars = {}) {
   if (ctaUrl) {
     text = `${text}\n\n${ctaLabel}: ${ctaUrl}`;
   }
-  text = `${text}\n\nNeed help? ${config.supportEmail || config.mailReplyTo} or WhatsApp ${config.supportWhatsAppDisplay}\n© ${v.year} New India Export`;
+  text = `${text}\n\nNeed help? ${config.supportEmail || config.mailReplyTo} or WhatsApp ${config.supportWhatsAppDisplay}\n© ${v.year} ${config.appName || 'VIRASTRA by New India Export'}`;
 
   return { subject, html, text, attachmentsMeta: TEMPLATE_ATTACHMENTS[template] || null };
 }

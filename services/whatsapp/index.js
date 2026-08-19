@@ -100,7 +100,7 @@ function buildGraphPayload({ template, vars, phone, rendered }) {
             type: 'body',
             parameters: [
               { type: 'text', text: String(name || 'there').slice(0, 60) },
-              { type: 'text', text: String(body || 'You have an update from VIRASTRA.').slice(0, 1024) },
+              { type: 'text', text: String(body || 'You have an update from VIRASTRA by New India Export.').slice(0, 1024) },
               { type: 'text', text: String(cta || config.frontendUrl).slice(0, 200) },
             ],
           },

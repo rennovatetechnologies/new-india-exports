@@ -1,7 +1,7 @@
 {
   "name": "backend",
   "version": "2.3.0",
-  "description": "VIRASTRA / New India Export production API (OTP auth, cases, Razorpay, GST invoices, Drive, Resend)",
+  "description": "VIRASTRA by New India Export production API (OTP auth, cases, Razorpay, GST invoices, Drive, Resend)",
   "main": "server.js",
   "engines": {
     "node": ">=20"

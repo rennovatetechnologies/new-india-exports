@@ -15,19 +15,19 @@ function supportLine() {
 }
 
 function signOff() {
-  return `— ${config.appName || 'VIRASTRA'} · New India Export`;
+  return `— ${config.appName || 'VIRASTRA by New India Export'}`;
 }
 
 function otpIntent(purpose) {
   switch (String(purpose || '')) {
     case 'customer_signup':
-      return 'create your VIRASTRA workspace';
+      return 'create your VIRASTRA by New India Export workspace';
     case 'staff_login':
       return 'sign in to the operations workspace';
     case 'staff_register':
       return 'confirm your staff access request';
     default:
-      return 'sign in to VIRASTRA';
+      return 'sign in to VIRASTRA by New India Export';
   }
 }
 
@@ -53,7 +53,7 @@ Your one-time code to ${otpIntent(v.purpose)} is:
 
 *${v.otpCode || '------'}*
 
-This code expires in *${v.expiresMinutes || 10} minutes*. Please don’t share it with anyone — VIRASTRA will never ask for it on a call or chat.
+This code expires in *${v.expiresMinutes || 10} minutes*. Please don’t share it with anyone — VIRASTRA by New India Export will never ask for it on a call or chat.
 
 If you didn’t request this, you can ignore this message.
 
@@ -72,7 +72,7 @@ ${signOff()}`;
 
     case 'staff.access_approved':
       return withCta(
-        `Hi ${hi},\n\nGood news — your VIRASTRA staff access is *active*.\n\nYou can sign in anytime with your work email and a one-time code (no password).`,
+        `Hi ${hi},\n\nGood news — your VIRASTRA by New India Export staff access is *active*.\n\nYou can sign in anytime with your work email and a one-time code (no password).`,
         template,
         { ...v, ctaLabel: 'Sign in to staff workspace' }
       );
@@ -80,7 +80,7 @@ ${signOff()}`;
     case 'staff.access_rejected':
       return `Hi ${hi},
 
-Thank you for applying to join the VIRASTRA team. After review, we are unable to approve access at this time.
+Thank you for applying to join the VIRASTRA by New India Export team. After review, we are unable to approve access at this time.
 ${v.reason ? `\nNote from admin: ${v.reason}\n` : ''}
 ${supportLine()}
 ${signOff()}`;
@@ -88,7 +88,7 @@ ${signOff()}`;
     case 'staff.access_suspended':
       return `Hi ${hi},
 
-Your VIRASTRA staff access has been *suspended*. You won’t be able to sign in until an administrator restores it.
+Your VIRASTRA by New India Export staff access has been *suspended*. You won’t be able to sign in until an administrator restores it.
 ${v.reason ? `\nReason: ${v.reason}\n` : ''}
 ${supportLine()}
 ${signOff()}`;
@@ -179,21 +179,21 @@ ${signOff()}`;
 
     case 'doc.requested':
       return withCta(
-        `Hi ${hi},\n\nYour VIRASTRA desk has requested a document to keep onboarding moving.\n\n*${v.label || 'Requested document'}*${v.caseId ? `\nCase: ${v.caseId}` : ''}${v.reason ? `\nWhy: ${v.reason}` : ''}\n\nPlease upload a clear scan or PDF from your workspace.`,
+        `Hi ${hi},\n\nYour VIRASTRA by New India Export desk has requested a document to keep onboarding moving.\n\n*${v.label || 'Requested document'}*${v.caseId ? `\nCase: ${v.caseId}` : ''}${v.reason ? `\nWhy: ${v.reason}` : ''}\n\nPlease upload a clear scan or PDF from your workspace.`,
         template,
         { ...v, ctaLabel: 'Upload document' }
       );
 
     case 'doc.delivered_customer':
       return withCta(
-        `Hi ${hi},\n\nYour VIRASTRA desk shared a new document${v.label ? `: *${v.label}*` : ''}${v.caseId ? ` on case ${v.caseId}` : ''}.${v.note ? `\n\nNote: ${v.note}` : ''}\n\nYou can download it from your workspace.`,
+        `Hi ${hi},\n\nYour VIRASTRA by New India Export desk shared a new document${v.label ? `: *${v.label}*` : ''}${v.caseId ? ` on case ${v.caseId}` : ''}.${v.note ? `\n\nNote: ${v.note}` : ''}\n\nYou can download it from your workspace.`,
         template,
         { ...v, ctaLabel: 'Open documents' }
       );
 
     case 'message.ops_to_customer':
       return withCta(
-        `Hi ${hi},\n\nYour VIRASTRA desk sent you a message${v.caseId ? ` about case ${v.caseId}` : ''}:\n\n${v.body || v.preview || ''}\n\nYou can reply from your dashboard.`,
+        `Hi ${hi},\n\nYour VIRASTRA by New India Export desk sent you a message${v.caseId ? ` about case ${v.caseId}` : ''}:\n\n${v.body || v.preview || ''}\n\nYou can reply from your dashboard.`,
         template,
         { ...v, ctaLabel: 'View conversation' }
       );
@@ -237,7 +237,7 @@ ${signOff()}`;
       return withCta(
         `Hi ${hi},\n\nThank you — we’ve received your shipment enquiry. Our team will contact you shortly with next steps.\n\n${v.bookingId || v.paymentId ? `Reference: ${v.bookingId || v.paymentId}` : ''}`,
         template,
-        { ...v, ctaLabel: 'Visit VIRASTRA' }
+        { ...v, ctaLabel: 'Visit VIRASTRA by New India Export' }
       );
 
     case 'support.ticket_created':
@@ -256,7 +256,7 @@ ${signOff()}`;
 
     default:
       return withCta(
-        `Hi ${hi},\n\n${v.message || 'You have a new update from VIRASTRA.'}`,
+        `Hi ${hi},\n\n${v.message || 'You have a new update from VIRASTRA by New India Export.'}`,
         template,
         v
       );
@@ -271,7 +271,7 @@ function renderWhatsApp(template, vars = {}) {
     ...vars,
   };
   const text = String(builtInText(template, v) || '').trim();
-  const preview = text.split('\n').filter(Boolean)[0] || 'VIRASTRA update';
+  const preview = text.split('\n').filter(Boolean)[0] || 'VIRASTRA by New India Export update';
   return { text, preview };
 }
 

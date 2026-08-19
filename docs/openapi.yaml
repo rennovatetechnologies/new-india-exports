@@ -1,6 +1,6 @@
 openapi: 3.0.3
 info:
-  title: 'New India Export / VIRASTRA API'
+  title: 'VIRASTRA by New India Export API'
   version: 2.3.0
   description: "Production Express API for customer onboarding, OTP auth, KYC, cases, Razorpay payments, GST invoices, events, and admin ops.\n\n**Auth:** Email OTP only. Send `Authorization: Bearer <JWT>` for protected routes.\n\n**Money:** Amounts in INR rupees in API/DB; converted to paise only for Razorpay.\n\n**Envelope:** `{ success, data?, message? }` on success; `{ success: false, message, code?, details? }` on errors.\n\nLegacy vault/shipment routes under `/api/cases/...` exist only when `ENABLE_LEGACY_SHIPMENT=true`."
   contact:
