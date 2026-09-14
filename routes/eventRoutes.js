@@ -57,11 +57,114 @@ function eventPricingFrom(source = {}, fallback = {}) {
   };
 }
 
+const EVENT_KINDS = new Set(['webinar', 'tour', 'workshop', 'summit', 'delegation']);
+
+function slugifyTitle(title) {
+  const s = String(title || '')
+    .toLowerCase()
+    .replace(/['’]/g, '')
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 80);
+  return s || 'event';
+}
+
+function cleanStringList(raw, maxItems = 24, maxLen = 300) {
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .map((s) => String(s || '').trim())
+    .filter(Boolean)
+    .slice(0, maxItems)
+    .map((s) => s.slice(0, maxLen));
+}
+
+function cleanNamedList(raw, maxItems = 16) {
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .map((item) => {
+      if (!item || typeof item !== 'object') return null;
+      const date = String(item.date || '').trim().slice(0, 80);
+      const title = String(item.title || '').trim().slice(0, 200);
+      const desc = String(item.desc || '').trim().slice(0, 500);
+      if (!date && !title && !desc) return null;
+      return { date, title, desc };
+    })
+    .filter(Boolean)
+    .slice(0, maxItems);
+}
+
+function pickLandingString(source, fallback, key, max) {
+  const raw = source[key] != null ? source[key] : fallback[key];
+  return String(raw || '').trim().slice(0, max);
+}
+
+function landingFrom(source = {}, fallback = {}) {
+  let kind = String(source.kind != null ? source.kind : fallback.kind || '')
+    .trim()
+    .toLowerCase();
+  if (!EVENT_KINDS.has(kind)) kind = '';
+  const featuredRaw = source.featured != null ? source.featured : fallback.featured;
+  return {
+    slug: pickLandingString(source, fallback, 'slug', 80),
+    badge: pickLandingString(source, fallback, 'badge', 80),
+    subtitle: pickLandingString(source, fallback, 'subtitle', 200),
+    tagline: pickLandingString(source, fallback, 'tagline', 200),
+    time: pickLandingString(source, fallback, 'time', 80),
+    timeNote: pickLandingString(source, fallback, 'timeNote', 120),
+    mode: pickLandingString(source, fallback, 'mode', 80),
+    modeNote: pickLandingString(source, fallback, 'modeNote', 120),
+    kind,
+    brochureId: pickLandingString(source, fallback, 'brochureId', 80),
+    tourBrochureId: pickLandingString(source, fallback, 'tourBrochureId', 80),
+    brochureFileName: pickLandingString(source, fallback, 'brochureFileName', 200),
+    tourBrochureFileName: pickLandingString(source, fallback, 'tourBrochureFileName', 200),
+    overview: pickLandingString(source, fallback, 'overview', 4000),
+    learnings:
+      source.learnings != null
+        ? cleanStringList(source.learnings)
+        : cleanStringList(fallback.learnings),
+    inclusions:
+      source.inclusions != null
+        ? cleanStringList(source.inclusions)
+        : cleanStringList(fallback.inclusions),
+    sectors:
+      source.sectors != null ? cleanNamedList(source.sectors, 12) : cleanNamedList(fallback.sectors, 12),
+    timeline:
+      source.timeline != null
+        ? cleanNamedList(source.timeline, 16)
+        : cleanNamedList(fallback.timeline, 16),
+    tourTitle: pickLandingString(source, fallback, 'tourTitle', 200),
+    tourDates: pickLandingString(source, fallback, 'tourDates', 120),
+    tourDestination: pickLandingString(source, fallback, 'tourDestination', 120),
+    tourStatus: pickLandingString(source, fallback, 'tourStatus', 80),
+    tourNotice: pickLandingString(source, fallback, 'tourNotice', 500),
+    featured: Boolean(featuredRaw),
+  };
+}
+
+async function uniqueEventSlug(db, desired, excludeId) {
+  const base = slugifyTitle(desired);
+  let candidate = base;
+  let n = 2;
+  while (n < 60) {
+    const existing = await db.collection('events').findOne({
+      slug: candidate,
+      ...(excludeId ? { id: { $ne: excludeId } } : {}),
+      $or: [{ deletedAt: null }, { deletedAt: { $exists: false } }],
+    });
+    if (!existing) return candidate;
+    candidate = `${base.slice(0, 70)}-${n}`;
+    n += 1;
+  }
+  return `${base.slice(0, 60)}-${Date.now().toString(36)}`;
+}
+
 function publicEvent(e) {
   if (!e || e.deletedAt) return null;
   const dates = eventDatesFrom(e);
   const pricing = eventPricingFrom(e);
   const installmentPreview = installments.previewForPrice(pricing.effectivePrice);
+  const landing = landingFrom(e);
   return {
     id: e.id,
     title: e.title,
@@ -89,6 +192,30 @@ function publicEvent(e) {
       : null,
     createdAt: e.createdAt || null,
     expired: isEventExpired(e),
+    slug: landing.slug || '',
+    badge: landing.badge,
+    subtitle: landing.subtitle,
+    tagline: landing.tagline,
+    time: landing.time,
+    timeNote: landing.timeNote,
+    mode: landing.mode,
+    modeNote: landing.modeNote,
+    kind: landing.kind,
+    brochureId: landing.brochureId,
+    tourBrochureId: landing.tourBrochureId,
+    brochureFileName: landing.brochureFileName,
+    tourBrochureFileName: landing.tourBrochureFileName,
+    overview: landing.overview,
+    learnings: landing.learnings,
+    inclusions: landing.inclusions,
+    sectors: landing.sectors,
+    timeline: landing.timeline,
+    tourTitle: landing.tourTitle,
+    tourDates: landing.tourDates,
+    tourDestination: landing.tourDestination,
+    tourStatus: landing.tourStatus,
+    tourNotice: landing.tourNotice,
+    featured: landing.featured,
   };
 }
 
@@ -348,6 +475,8 @@ router.post(
     const id = await newEventId();
     const dates = eventDatesFrom(req.body);
     const pricing = eventPricingFrom(req.body);
+    const landing = landingFrom(req.body);
+    landing.slug = await uniqueEventSlug(db, landing.slug || req.body.title, id);
     const doc = {
       id,
       title: req.body.title,
@@ -361,6 +490,7 @@ router.post(
       desc: req.body.desc || '',
       priceInr: pricing.priceInr,
       discountPercent: pricing.discountPercent,
+      ...landing,
       deletedAt: null,
       updatedAt: utcnow(),
       createdAt: utcnow(),
@@ -385,6 +515,12 @@ router.put(
     if (!prev) return res.status(404).json({ success: false, message: 'Not found' });
     const dates = eventDatesFrom(req.body, prev);
     const pricing = eventPricingFrom(req.body, prev);
+    const landing = landingFrom(req.body, prev);
+    landing.slug = await uniqueEventSlug(
+      db,
+      landing.slug || prev.slug || req.body.title || prev.title,
+      id
+    );
     const doc = {
       id,
       title: req.body.title != null ? req.body.title : prev.title,
@@ -403,6 +539,7 @@ router.put(
       desc: req.body.desc != null ? req.body.desc : prev.desc,
       priceInr: pricing.priceInr,
       discountPercent: pricing.discountPercent,
+      ...landing,
       deletedAt: prev.deletedAt || null,
       createdAt: prev.createdAt || utcnow(),
       updatedAt: utcnow(),
@@ -486,6 +623,128 @@ router.post(
   })
 );
 
+function brochureSlot(raw) {
+  return String(raw || '').trim().toLowerCase() === 'tour' ? 'tour' : 'event';
+}
+
+router.post(
+  '/events/:eventId/brochure',
+  requireAdmin,
+  uploadBrochure.single('file'),
+  asyncHandler(async (req, res) => {
+    if (!req.file) return res.status(400).json({ success: false, message: 'File required' });
+    const db = requireDb();
+    const id = req.params.eventId;
+    const event = await db.collection('events').findOne({ id });
+    if (!event || event.deletedAt) {
+      return res.status(404).json({ success: false, message: 'Not found' });
+    }
+    const slot = brochureSlot(req.body?.slot || req.query?.slot);
+    const idField = slot === 'tour' ? 'tourBrochureId' : 'brochureId';
+    const nameField = slot === 'tour' ? 'tourBrochureFileName' : 'brochureFileName';
+    let brochureId = String(event[idField] || '').trim();
+    const title =
+      slot === 'tour' ? `${event.title} tour brochure` : `${event.title} brochure`;
+
+    if (brochureId) {
+      const prev = await db.collection('brochures').findOne({ id: brochureId });
+      if (!prev || prev.deletedAt) brochureId = '';
+    }
+
+    if (!brochureId) {
+      brochureId = `BR-${Date.now().toString(36).toUpperCase()}`;
+      const fileFields = await uploadBrochureFile(req.file, brochureId);
+      const doc = {
+        id: brochureId,
+        name: title,
+        title,
+        kind: 'pdf',
+        description: '',
+        category: 'event',
+        showInNav: false,
+        sortOrder: 200,
+        eventId: id,
+        eventSlot: slot,
+        ...fileFields,
+        createdAt: utcnow(),
+        updatedAt: utcnow(),
+        deletedAt: null,
+      };
+      await catalogUpdateOne('brochures', { id: brochureId }, { $set: doc }, { upsert: true });
+    } else {
+      const fileFields = await uploadBrochureFile(req.file, brochureId);
+      await catalogUpdateOne(
+        'brochures',
+        { id: brochureId },
+        {
+          $set: {
+            ...fileFields,
+            name: title,
+            title,
+            eventId: id,
+            eventSlot: slot,
+            showInNav: false,
+            kind: 'pdf',
+            updatedAt: utcnow(),
+          },
+        }
+      );
+    }
+
+    const fileName = req.file.originalname || title;
+    await db.collection('events').updateOne(
+      { id },
+      { $set: { [idField]: brochureId, [nameField]: fileName, updatedAt: utcnow() } }
+    );
+    await writeAudit(actorFromReq(req), 'event.brochure_uploaded', {
+      resource: { type: 'event', id },
+      meta: { slot, brochureId, fileName },
+    });
+    const updated = await db.collection('events').findOne({ id });
+    return res.json({
+      success: true,
+      data: publicEvent(updated),
+      brochureId,
+      slot,
+      fileName,
+    });
+  })
+);
+
+router.delete(
+  '/events/:eventId/brochure',
+  requireAdmin,
+  asyncHandler(async (req, res) => {
+    const db = requireDb();
+    const id = req.params.eventId;
+    const event = await db.collection('events').findOne({ id });
+    if (!event || event.deletedAt) {
+      return res.status(404).json({ success: false, message: 'Not found' });
+    }
+    const slot = brochureSlot(req.query?.slot || req.body?.slot);
+    const idField = slot === 'tour' ? 'tourBrochureId' : 'brochureId';
+    const nameField = slot === 'tour' ? 'tourBrochureFileName' : 'brochureFileName';
+    const brochureId = String(event[idField] || '').trim();
+    await db.collection('events').updateOne(
+      { id },
+      { $set: { [idField]: '', [nameField]: '', updatedAt: utcnow() } }
+    );
+    if (brochureId) {
+      await catalogUpdateOne(
+        'brochures',
+        { id: brochureId },
+        { $set: { deletedAt: utcnow(), updatedAt: utcnow() } }
+      );
+    }
+    await writeAudit(actorFromReq(req), 'event.brochure_removed', {
+      resource: { type: 'event', id },
+      meta: { slot, brochureId },
+    });
+    const updated = await db.collection('events').findOne({ id });
+    return res.json({ success: true, data: publicEvent(updated), slot });
+  })
+);
+
 router.post(
   '/events/:id/register',
   protect,
@@ -504,6 +763,9 @@ router.post(
       });
     }
     const email = normalizeEmail(req.user.email);
+    const community = require('../services/community');
+    const ok = await community.requireCustomerCommunity(req, res);
+    if (!ok) return;
     const pricing = eventPricingFrom(event);
     if (pricing.effectivePrice > 0) {
       return res.status(402).json({
@@ -634,6 +896,33 @@ router.get(
       if (row._id) counts[row._id] = row.count;
     }
     return res.json({ success: true, data: counts, counts });
+  })
+);
+
+router.get(
+  '/events/:eventId',
+  optionalAuth,
+  asyncHandler(async (req, res) => {
+    const db = requireDb();
+    const raw = String(req.params.eventId || '').trim();
+    if (!raw) return res.status(404).json({ success: false, message: 'Not found' });
+    const event = await db.collection('events').findOne({
+      $and: [
+        { $or: [{ deletedAt: null }, { deletedAt: { $exists: false } }] },
+        { $or: [{ id: raw }, { slug: raw }] },
+      ],
+    });
+    const mapped = publicEvent(event);
+    if (!mapped) return res.status(404).json({ success: false, message: 'Not found' });
+    if (mapped.expired && !isStaffUser(req.user)) {
+      return res.status(410).json({
+        success: false,
+        code: 'EVENT_EXPIRED',
+        message: 'This event has ended',
+        data: mapped,
+      });
+    }
+    return res.json(mapped);
   })
 );
 
@@ -780,6 +1069,7 @@ function publicBrochure(b) {
     fileSize: b.fileSize || null,
     showInNav: kind === 'pdf' ? b.showInNav !== false : false,
     sortOrder: Number.isFinite(Number(b.sortOrder)) ? Number(b.sortOrder) : 0,
+    eventId: b.eventId || null,
     createdAt: b.createdAt || null,
     updatedAt: b.updatedAt || null,
   };

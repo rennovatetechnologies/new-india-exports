@@ -148,6 +148,10 @@ async function withWorkflowStages(doc) {
   const kycDocs = await liveKycDocsForCase(doc);
   const merged = { ...doc, workflowStages: stages, kycDocs };
   const pub = publicCase(merged);
+  try {
+    const community = require('../community');
+    Object.assign(pub, await community.accessSnapshotForCase(doc));
+  } catch (_) {}
   if (
     doc.id &&
     pub.status === CASE_STATUS.COMPLETED &&
@@ -421,7 +425,7 @@ async function markPlanPaid(caseDoc, { planId, amountPaid, paymentId, purpose },
   const paidAt = utcnow();
   const expiresAt = addPlanValidity(paidAt);
 
-  return updateCase(
+  const updated = await updateCase(
     caseDoc.id,
     {
       planId: plan.id,
@@ -439,6 +443,15 @@ async function markPlanPaid(caseDoc, { planId, amountPaid, paymentId, purpose },
     },
     { actor }
   );
+  try {
+    const community = require('../community');
+    await community.grantFromPlan(
+      caseDoc.customerEmail,
+      { expiresAt, paymentId },
+      { actor }
+    );
+  } catch (_) {}
+  return updated;
 }
 
 function canAccessCase(user, caseDoc) {

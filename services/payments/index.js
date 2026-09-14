@@ -66,11 +66,55 @@ async function resolvePricing(body, user) {
     user?.email || body.customerDetails?.email || body.email || ''
   );
 
+  if (purpose === 'community' || body.sku === 'community') {
+    if (!customerEmail) {
+      throw Object.assign(new Error('Sign in to buy community access'), { status: 401 });
+    }
+    const community = require('../community');
+    const access = await community.getAccessForEmail(customerEmail);
+    const settings = access.settings;
+    if (!settings.enabled) {
+      throw Object.assign(new Error('Community access is not required right now'), { status: 400 });
+    }
+    if (settings.priceInr <= 0) {
+      return {
+        purpose: 'community',
+        sku: 'community',
+        description: settings.title || 'Community access',
+        amounts: computeGst(0),
+        free: true,
+        caseId: null,
+        customerEmail,
+        meta: body.meta || {},
+      };
+    }
+    if (access.active && access.source !== 'complimentary' && access.source !== 'disabled') {
+      throw Object.assign(new Error('Community access is already active'), {
+        status: 400,
+        code: 'COMMUNITY_ALREADY_ACTIVE',
+      });
+    }
+    const amounts = computeGst(settings.priceInr);
+    return {
+      purpose: 'community',
+      sku: 'community',
+      description: settings.title || 'Community access',
+      amounts,
+      caseId: null,
+      customerEmail,
+      validityDays: settings.validityDays,
+      listPrice: settings.priceInr,
+      discountPercent: 0,
+      meta: body.meta || {},
+    };
+  }
+
   // Plan purchase / upgrade (skip when caller explicitly asked for an event)
   if (
     purpose !== 'event' &&
     purpose !== 'workshop' &&
     purpose !== 'booking' &&
+    purpose !== 'community' &&
     (planId || purpose === 'plan' || purpose === 'plan_upgrade')
   ) {
     const plan = await loadPlan(planId || body.sku);
@@ -153,6 +197,16 @@ async function resolvePricing(body, user) {
         status: 410,
         code: 'EVENT_EXPIRED',
       });
+    }
+    if (user?.role === 'customer' && customerEmail) {
+      const community = require('../community');
+      const access = await community.getAccessForEmail(customerEmail);
+      if (!access.active) {
+        throw Object.assign(new Error('Community access is required to register for events'), {
+          status: 402,
+          code: 'COMMUNITY_ACCESS_REQUIRED',
+        });
+      }
     }
     const listPrice = Math.round(Number(event?.priceInr ?? event?.price ?? 0) || 0);
     const discountPercent = event?.discountPercent ?? 0;
@@ -425,6 +479,39 @@ async function applySideEffects(payment, { actor } = {}) {
         });
       } catch (_) {}
     }
+  }
+
+  if (payment.purpose === 'community') {
+    try {
+      const community = require('../community');
+      const settings = await community.getSettings();
+      await community.grantAccess(
+        email,
+        {
+          paymentId: payment.id,
+          amountPaid: payment.amounts?.taxable || 0,
+          validityDays: settings.validityDays,
+          source: 'community',
+        },
+        { actor }
+      );
+    } catch (e) {
+      console.warn('community grant failed:', e.message);
+    }
+    try {
+      await enqueueEmail({
+        to: email,
+        template: 'payment.receipt',
+        vars: {
+          customerName: payment.customerName || email,
+          planName: payment.description || 'Community access',
+          amountInr: payment.amounts?.total,
+          paymentId: payment.id,
+          ctaUrl: `${config.frontendUrl}/dashboard`,
+        },
+        actor,
+      });
+    } catch (_) {}
   }
 
   if (payment.purpose === 'booking') {

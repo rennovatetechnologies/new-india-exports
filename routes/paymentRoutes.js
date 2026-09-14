@@ -52,6 +52,7 @@ async function createOrderHandler(req, res) {
     const status = e.status || 500;
     return res.status(status).json({
       success: false,
+      code: e.code || undefined,
       message: e.message || 'Failed to create order',
     });
   }
@@ -246,10 +247,15 @@ router.get(
   })
 );
 
-router.get('/config/public', (req, res) => {
-  res.json({
-    success: true,
-    data: {
+router.get(
+  '/config/public',
+  asyncHandler(async (req, res) => {
+    let communityAccess = null;
+    try {
+      const community = require('../services/community');
+      communityAccess = community.publicSettings(await community.getSettings());
+    } catch (_) {}
+    const payload = {
       razorpayKeyId: config.razorpayKeyId || '',
       appName: config.appName,
       supportEmail: config.supportEmail,
@@ -265,24 +271,14 @@ router.get('/config/public', (req, res) => {
         address: (config.seller.addressLines || []).join(', '),
       },
       channels: publicChannelFlags(),
-    },
-    // FE also reads top-level
-    razorpayKeyId: config.razorpayKeyId || '',
-    appName: config.appName,
-    supportEmail: config.supportEmail,
-    supportWhatsApp: config.supportWhatsApp,
-    gstRate: config.gstRate,
-    installmentThresholdInr: config.installmentThresholdInr,
-    installmentCount: config.installmentCount,
-    installmentGapDays: config.installmentGapDays,
-    installmentWindowDays: config.installmentWindowDays,
-    seller: {
-      legalName: config.seller.legalName,
-      gstin: config.seller.gstin,
-      address: (config.seller.addressLines || []).join(', '),
-    },
-    channels: publicChannelFlags(),
-  });
-});
+      communityAccess,
+    };
+    return res.json({
+      success: true,
+      data: payload,
+      ...payload,
+    });
+  })
+);
 
 module.exports = router;

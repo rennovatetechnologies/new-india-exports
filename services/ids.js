@@ -76,6 +76,11 @@ async function newStaffRequestId() {
   return `REQ-${pad(seq, 4)}`;
 }
 
+async function newUpdateId() {
+  const seq = await nextSeq('platform_post');
+  return `POST-${pad(seq, 6)}`;
+}
+
 module.exports = {
   nextSeq,
   newCaseId,
@@ -89,4 +94,5 @@ module.exports = {
   newInstallmentPlanId,
   newTicketId,
   newStaffRequestId,
+  newUpdateId,
 };

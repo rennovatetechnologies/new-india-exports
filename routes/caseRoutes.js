@@ -225,6 +225,11 @@ router.get(
     if (req.user.role === 'customer' && !cases.canAccessCase(req.user, caseDoc)) {
       return res.status(403).json({ success: false, message: 'Forbidden' });
     }
+    if (req.user.role === 'customer') {
+      const community = require('../services/community');
+      const ok = await community.requireCustomerCommunity(req, res);
+      if (!ok) return;
+    }
     const db = requireDb();
     const items = await db
       .collection('case_messages')
@@ -244,6 +249,11 @@ router.post(
     if (!caseDoc) return res.status(404).json({ success: false, message: 'Not found' });
     if (req.user.role === 'customer' && !cases.canAccessCase(req.user, caseDoc)) {
       return res.status(403).json({ success: false, message: 'Forbidden' });
+    }
+    if (req.user.role === 'customer') {
+      const community = require('../services/community');
+      const ok = await community.requireCustomerCommunity(req, res);
+      if (!ok) return;
     }
     const body = String(req.body.body || '').trim();
     if (!body) return res.status(400).json({ success: false, message: 'body required' });

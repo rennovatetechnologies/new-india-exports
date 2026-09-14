@@ -71,7 +71,7 @@ const planUpdateSchema = z.object({
 
 const createOrderSchema = z.object({
   purpose: z
-    .enum(['plan', 'plan_upgrade', 'event', 'workshop', 'booking', 'custom'])
+    .enum(['plan', 'plan_upgrade', 'event', 'workshop', 'booking', 'community', 'custom'])
     .optional(),
   planId: optionalString(80),
   eventId: optionalString(80),
@@ -250,6 +250,61 @@ const optionalSeatValue = z.preprocess(
     .transform((v) => (v == null || v === '' ? undefined : v))
 );
 
+const eventKindSchema = z.preprocess((v) => {
+  if (v == null || v === '') return undefined;
+  const s = String(v).trim().toLowerCase();
+  return s || undefined;
+}, z.enum(['webinar', 'tour', 'workshop', 'summit', 'delegation']).optional());
+
+const eventStringList = z.array(z.string().trim().max(300)).max(24).optional();
+
+const eventSectorSchema = z.object({
+  title: optionalString(160),
+  desc: optionalString(400),
+});
+
+const eventTimelineItemSchema = z.object({
+  date: optionalString(80),
+  title: optionalString(200),
+  desc: optionalString(500),
+});
+
+const landingString = (max) =>
+  z.preprocess(
+    (v) => {
+      if (v == null) return undefined;
+      return String(v).trim().slice(0, max);
+    },
+    z.string().max(max).optional()
+  );
+
+const eventLandingShape = {
+  slug: landingString(80),
+  badge: landingString(80),
+  subtitle: landingString(200),
+  tagline: landingString(200),
+  time: landingString(80),
+  timeNote: landingString(120),
+  mode: landingString(80),
+  modeNote: landingString(120),
+  kind: eventKindSchema,
+  brochureId: landingString(80),
+  tourBrochureId: landingString(80),
+  brochureFileName: landingString(200),
+  tourBrochureFileName: landingString(200),
+  overview: landingString(4000),
+  learnings: eventStringList,
+  inclusions: eventStringList,
+  sectors: z.array(eventSectorSchema).max(12).optional(),
+  timeline: z.array(eventTimelineItemSchema).max(16).optional(),
+  tourTitle: landingString(200),
+  tourDates: landingString(120),
+  tourDestination: landingString(120),
+  tourStatus: landingString(80),
+  tourNotice: landingString(500),
+  featured: z.boolean().optional(),
+};
+
 const eventUpsertSchema = z.object({
   id: optionalString(80),
   title: nonEmptyString(2, 200),
@@ -260,10 +315,11 @@ const eventUpsertSchema = z.object({
   img: optionalString(500),
   seats: optionalSeatValue,
   capacity: optionalSeatValue,
-  desc: optionalString(2000),
+  desc: optionalString(4000),
   priceInr: z.coerce.number().min(0).optional(),
   price: z.coerce.number().min(0).optional(),
   discountPercent: z.coerce.number().min(0).max(100).optional().default(0),
+  ...eventLandingShape,
 });
 
 const eventUpdateSchema = z.object({
@@ -275,10 +331,11 @@ const eventUpdateSchema = z.object({
   img: optionalString(500),
   seats: optionalSeatValue,
   capacity: optionalSeatValue,
-  desc: optionalString(2000),
+  desc: optionalString(4000),
   priceInr: z.coerce.number().min(0).optional(),
   price: z.coerce.number().min(0).optional(),
   discountPercent: z.coerce.number().min(0).max(100).optional(),
+  ...eventLandingShape,
 });
 
 const formBoolOptional = z.preprocess((v) => {
@@ -477,6 +534,31 @@ const objectIdParamSchema = (key = 'id') =>
 
 const emptyBodySchema = z.object({}).passthrough();
 
+const communitySettingsSchema = z.object({
+  enabled: z.boolean().optional(),
+  title: optionalString(80),
+  tagline: optionalString(240),
+  priceInr: z.coerce.number().min(0).max(1_000_000).optional(),
+  validityDays: z.coerce.number().int().min(1).max(3650).optional(),
+  benefits: z.array(z.string().trim().max(200)).max(12).optional(),
+});
+
+const communityPostSchema = z.object({
+  kind: z.enum(['update', 'upcoming']).optional().default('update'),
+  title: nonEmptyString(2, 200),
+  body: nonEmptyString(2, 8000).optional(),
+  content: optionalString(8000),
+  published: z.boolean().optional().default(true),
+});
+
+const communityPostUpdateSchema = z.object({
+  kind: z.enum(['update', 'upcoming']).optional(),
+  title: optionalString(200),
+  body: optionalString(8000),
+  content: optionalString(8000),
+  published: z.boolean().optional(),
+});
+
 module.exports = {
   staffAccessPatchSchema,
   staffUserPatchSchema,
@@ -516,6 +598,9 @@ module.exports = {
   adminPaymentsQuerySchema,
   emailOutboxQuerySchema,
   transcriptsQuerySchema,
+  communitySettingsSchema,
+  communityPostSchema,
+  communityPostUpdateSchema,
   invoiceListQuerySchema,
   vaultRejectSchema,
   vaultCommentSchema,

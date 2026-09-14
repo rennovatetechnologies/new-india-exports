@@ -29,6 +29,7 @@ const meRoutes = require('./routes/meRoutes');
 const adminRoutes = require('./routes/adminRoutes');
 const supportRoutes = require('./routes/supportRoutes');
 const fileRoutes = require('./routes/fileRoutes');
+const communityRoutes = require('./routes/communityRoutes');
 const { mountSwagger } = require('./middleware/swagger');
 
 const app = express();
@@ -135,6 +136,7 @@ app.use('/api', planRoutes);
 app.use('/api', eventRoutes);
 app.use('/api', meRoutes);
 app.use('/api', fileRoutes);
+app.use('/api', communityRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api', supportRoutes);
 

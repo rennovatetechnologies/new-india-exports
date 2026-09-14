@@ -34,6 +34,19 @@ const SEED_STAFF = [
     emailVerified: true,
     createdAt: '2026-03-08T08:00:00Z',
   },
+  {
+    id: 'REQ-NEWINDEXIM-ADMIN',
+    name: 'New India Export',
+    email: 'newindexim@gmail.com',
+    phone: '',
+    role: 'admin',
+    department: 'Platform',
+    employeeId: '',
+    reason: 'Bootstrap platform admin',
+    status: 'Approved',
+    emailVerified: true,
+    createdAt: '2026-09-11T08:00:00Z',
+  },
 ];
 
 const BASIC_KYC = [
@@ -527,6 +540,14 @@ async function seedIfEmpty() {
     { upsert: true }
   );
   console.log(`Seeded ops roster: ${DEFAULT_OPS_ROSTER.map((r) => r.email).join(', ')}`);
+
+  try {
+    const community = require('../services/community');
+    await community.seedDefaults();
+    console.log('Community access defaults ready');
+  } catch (e) {
+    console.warn('Community seed skipped:', e.message);
+  }
 
 
   // Do NOT seed legacy VST shipment cases for the production product surface.

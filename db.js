@@ -183,6 +183,9 @@ async function ensureIndexes() {
     await db.collection('files').createIndex({ id: 1 }, { unique: true });
     await db.collection('files').createIndex({ driveFileId: 1 });
     await db.collection('config').createIndex({ key: 1 }, { unique: true });
+    await db.collection('platform_posts').createIndex({ id: 1 }, { unique: true });
+    await db.collection('platform_posts').createIndex({ kind: 1, published: 1, publishedAt: -1 });
+    await db.collection('users').createIndex({ communityAccessExpiresAt: 1 });
     await db.collection('bookings').createIndex({ email: 1, createdAt: -1 });
     await db.collection('support_tickets').createIndex({ id: 1 }, { unique: true });
     // legacy shipment cases — keep indexes if collection exists

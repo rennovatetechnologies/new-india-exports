@@ -255,7 +255,7 @@ router.get(
     const email = normalizeEmail(req.user.email);
     const rows = await db
       .collection('notifications')
-      .find({ email })
+      .find({ email, read: { $ne: true } })
       .sort({ createdAt: -1 })
       .limit(50)
       .toArray();
@@ -280,9 +280,13 @@ router.post(
   validateParams(objectIdParamSchema('notifId')),
   asyncHandler(async (req, res) => {
     const db = requireDb();
-    await db
-      .collection('notifications')
-      .updateOne({ _id: new ObjectId(req.params.notifId) }, { $set: { read: true } });
+    await db.collection('notifications').updateOne(
+      {
+        _id: new ObjectId(req.params.notifId),
+        email: normalizeEmail(req.user.email),
+      },
+      { $set: { read: true, readAt: utcnow() } }
+    );
     return res.json({ ok: true });
   })
 );
