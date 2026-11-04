@@ -667,6 +667,45 @@ async function markPaymentFailed({ razorpayOrderId, reason, actor }) {
   return db.collection('payments').findOne({ id: payment.id });
 }
 
+async function markPaymentRefunded({
+  razorpayOrderId,
+  razorpayPaymentId,
+  reason,
+  actor,
+} = {}) {
+  const db = requireDb();
+  const query = {};
+  if (razorpayPaymentId) query.razorpayPaymentId = razorpayPaymentId;
+  else if (razorpayOrderId) query.razorpayOrderId = razorpayOrderId;
+  else return null;
+
+  const payment = await db.collection('payments').findOne(query);
+  if (!payment) return null;
+  if (payment.status === 'refunded') return payment;
+
+  await db.collection('payments').updateOne(
+    { id: payment.id },
+    {
+      $set: {
+        status: 'refunded',
+        refundReason: reason || '',
+        refundedAt: utcnow(),
+        updatedAt: utcnow(),
+      },
+    }
+  );
+  await db.collection('orders').updateOne(
+    { razorpayOrderId: payment.razorpayOrderId },
+    { $set: { status: 'refunded', updatedAt: utcnow() } }
+  );
+  await writeAudit(actor || { email: 'system', role: 'system' }, 'payment.refunded', {
+    resource: { type: 'payment', id: payment.id },
+    meta: { reason, razorpayPaymentId: razorpayPaymentId || payment.razorpayPaymentId },
+    tone: 'warning',
+  });
+  return db.collection('payments').findOne({ id: payment.id });
+}
+
 module.exports = {
   getRazorpayClient,
   verifyPaymentSignature,
@@ -675,5 +714,6 @@ module.exports = {
   createOrder,
   capturePayment,
   markPaymentFailed,
+  markPaymentRefunded,
   applySideEffects,
 };

@@ -11,7 +11,12 @@ const multer = require('multer');
 const config = require('./config');
 const { connectDb, getDb } = require('./db');
 const { seedIfEmpty } = require('./scripts/seed');
-const { verifyWebhookSignature, capturePayment, markPaymentFailed } = require('./services/payments');
+const {
+  verifyWebhookSignature,
+  capturePayment,
+  markPaymentFailed,
+  markPaymentRefunded,
+} = require('./services/payments');
 const { startReminderJob } = require('./services/installments');
 const { verifyMail } = require('./services/mail');
 const { requestIdMiddleware } = require('./middleware/auth');
@@ -83,6 +88,24 @@ app.post('/api/webhooks/razorpay', express.raw({ type: 'application/json' }), as
         await markPaymentFailed({
           razorpayOrderId: orderId,
           reason: entity.error_description || 'payment.failed',
+          actor: { email: 'razorpay', role: 'system' },
+        });
+      }
+    } else if (
+      event === 'refund.created' ||
+      event === 'refund.processed' ||
+      event === 'payment.refunded'
+    ) {
+      const refundEntity = payload.payload?.refund?.entity || entity;
+      const paymentId =
+        refundEntity.payment_id || entity.id || payload.payload?.payment?.entity?.id;
+      const orderId =
+        entity.order_id || payload.payload?.payment?.entity?.order_id || null;
+      if (paymentId || orderId) {
+        await markPaymentRefunded({
+          razorpayPaymentId: paymentId,
+          razorpayOrderId: orderId,
+          reason: event,
           actor: { email: 'razorpay', role: 'system' },
         });
       }

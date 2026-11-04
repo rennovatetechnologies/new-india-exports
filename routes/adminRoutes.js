@@ -172,6 +172,7 @@ router.get(
     const items = [];
     let paidTotal = 0;
     let paidCount = 0;
+    const byStatus = { paid: 0, created: 0, failed: 0, refunded: 0 };
     for (const p of rows) {
       const email = String(p.customerEmail || '').toLowerCase();
       const hay = [
@@ -192,14 +193,16 @@ router.get(
       if (q && !hay.includes(q)) continue;
 
       const total = Number(p.amounts?.total || 0) || 0;
-      if (p.status === 'paid') {
+      const st = p.status || 'created';
+      if (Object.prototype.hasOwnProperty.call(byStatus, st)) byStatus[st] += 1;
+      if (st === 'paid') {
         paidCount += 1;
         paidTotal += total;
       }
 
       items.push({
         id: p.id,
-        status: p.status,
+        status: st,
         purpose: p.purpose || null,
         sku: p.sku || null,
         description: p.description || '',
@@ -229,6 +232,7 @@ router.get(
         count: items.length,
         paidCount,
         paidTotal,
+        byStatus,
       },
     });
   })
