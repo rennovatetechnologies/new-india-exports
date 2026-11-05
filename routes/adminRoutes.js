@@ -3,6 +3,8 @@ const { requireDb } = require('../db');
 const { requireAdmin } = require('../middleware/auth');
 const { validateBody, validateQuery } = require('../middleware/validate');
 const { utcnow, cleanDoc } = require('../services/helpers');
+const { actorFromReq } = require('../services/audit');
+const payments = require('../services/payments');
 const { asyncHandler } = require('../utils/asyncHandler');
 const { retryFailed } = require('../services/mail');
 const { retryFailed: retryWhatsAppFailed } = require('../services/whatsapp');
@@ -10,6 +12,7 @@ const {
   emailOutboxRetrySchema,
   auditQuerySchema,
   adminPaymentsQuerySchema,
+  adminGatewayTraceQuerySchema,
   emailOutboxQuerySchema,
   transcriptsQuerySchema,
 } = require('../schemas');
@@ -139,6 +142,20 @@ router.get('/analytics/detail', requireAdmin, (req, res) => {
 });
 
 /**
+ * Live payment, refund, and bank-reference trace. Also writes a refunded
+ * status back onto a ledger row when the gateway has fully refunded it.
+ */
+router.get(
+  '/payments/trace',
+  requireAdmin,
+  validateQuery(adminGatewayTraceQuerySchema),
+  asyncHandler(async (req, res) => {
+    const items = await payments.syncPaymentTrace(req.query.id, actorFromReq(req));
+    return res.json({ success: true, data: items, items });
+  })
+);
+
+/**
  * Admin payments ledger — week / month / all, optional status + search.
  */
 router.get(
@@ -218,6 +235,10 @@ router.get(
         at: p.paidAt || p.createdAt || null,
         paidAt: p.paidAt || null,
         createdAt: p.createdAt || null,
+        gatewayTrace: p.gatewayTrace || null,
+        gatewaySyncedAt: p.gatewaySyncedAt || null,
+        refundReason: p.refundReason || null,
+        refundedAt: p.refundedAt || null,
       });
       if (items.length >= limit) break;
     }

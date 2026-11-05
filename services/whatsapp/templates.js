@@ -107,6 +107,13 @@ ${signOff()}`;
         { ...v, ctaLabel: 'View invoices' }
       );
 
+    case 'payment.refunded':
+      return withCta(
+        `Hi ${hi},\n\nA refund has been recorded${v.planName ? ` for *${v.planName}*` : ''}${v.amountInr != null ? ` of *${money(v.amountInr)}*` : ''}.\n${v.reason ? `\nDetails: ${v.reason}\n` : ''}\nThe credit returns to the same bank or UPI account and can take a few working days to show. Track the status and bank references from Billing.`,
+        template,
+        { ...v, ctaLabel: 'View your payments' }
+      );
+
     case 'payment.failed':
       return withCta(
         `Hi ${hi},\n\nWe couldn’t complete your payment${v.planName ? ` for *${v.planName}*` : ''}. *No amount was captured* for this attempt.\n${v.reason ? `\nDetails: ${v.reason}\n` : ''}\nYou can retry securely from your dashboard. If your bank deducted money, reply with the payment reference and we’ll reconcile it.`,

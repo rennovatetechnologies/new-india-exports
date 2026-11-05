@@ -206,6 +206,20 @@ router.post(
 );
 
 router.get(
+  '/payments/me',
+  protect,
+  asyncHandler(async (req, res) => {
+    const email = normalizeEmail(req.user?.email || '');
+    if (!email) return res.status(401).json({ success: false, message: 'Not authorized' });
+    const items = await payments.listPaymentsForCustomer(email, {
+      refresh: true,
+      actor: actorFromReq(req),
+    });
+    return res.json({ success: true, data: items, items });
+  })
+);
+
+router.get(
   '/payments/:paymentId',
   protect,
   asyncHandler(async (req, res) => {

@@ -29,6 +29,7 @@ const COLLECTIONS = [
   'case_documents',
   'doc_requests',
   'payments',
+  'payment_traces',
   'orders',
   'invoices',
   'bookings',
@@ -101,6 +102,7 @@ async function ensureIndexes(db) {
       partialFilterExpression: { razorpayPaymentId: { $type: 'string' } },
     }
   );
+  await db.collection('payment_traces').createIndex({ razorpayPaymentId: 1 }, { unique: true });
   await db.collection('invoices').createIndex({ id: 1 }, { unique: true });
   await db.collection('invoices').createIndex({ paymentId: 1 }, { unique: true });
   await db.collection('invoices').createIndex({ invoiceNumber: 1 }, { unique: true });

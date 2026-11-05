@@ -7,6 +7,7 @@ const { newPaymentId } = require('../ids');
 const { effectivePrice, computeGst, fromInclusiveTotal, inrToPaise } = require('../gst');
 const { writeAudit } = require('../audit');
 const { enqueueEmail } = require('../mail');
+const { enqueueWhatsApp } = require('../whatsapp');
 const { issueInvoiceForPayment } = require('../invoices');
 const cases = require('../cases');
 const installments = require('../installments');
@@ -667,6 +668,164 @@ async function markPaymentFailed({ razorpayOrderId, reason, actor }) {
   return db.collection('payments').findOne({ id: payment.id });
 }
 
+function paiseToInr(paise) {
+  return Math.round(Number(paise) || 0) / 100;
+}
+
+function isoFromUnix(sec) {
+  const n = Number(sec);
+  if (!n) return null;
+  return new Date(n * 1000).toISOString();
+}
+
+function mapGatewayRefund(refund) {
+  const notes = refund?.notes && typeof refund.notes === 'object' && !Array.isArray(refund.notes)
+    ? refund.notes
+    : {};
+  return {
+    id: refund.id,
+    amountInr: paiseToInr(refund.amount),
+    currency: refund.currency || 'INR',
+    status: refund.status || null,
+    speed: refund.speed_processed || refund.speed_requested || null,
+    reason: notes.refund_reason || notes.reason || null,
+    createdAt: isoFromUnix(refund.created_at),
+    creditRrn: refund.acquirer_data?.rrn || null,
+  };
+}
+
+function mapGatewayPayment(payment, refunds) {
+  return {
+    id: payment.id,
+    orderId: payment.order_id || null,
+    status: payment.status || null,
+    amountInr: paiseToInr(payment.amount),
+    amountRefundedInr: paiseToInr(payment.amount_refunded),
+    currency: payment.currency || 'INR',
+    method: payment.method || null,
+    captured: Boolean(payment.captured),
+    refundStatus: payment.refund_status || null,
+    description: payment.description || '',
+    customerEmail: payment.email || null,
+    customerContact: payment.contact || null,
+    createdAt: isoFromUnix(payment.created_at),
+    debitRrn: payment.acquirer_data?.rrn || null,
+    errorDescription: payment.error_description || null,
+    refunds,
+  };
+}
+
+function httpError(status, message) {
+  const err = new Error(message);
+  err.status = status;
+  err.body = { success: false, message };
+  return err;
+}
+
+function gatewayLookupError(err) {
+  const status = Number(err.statusCode || err.status || 0);
+  if (status === 400 || status === 404) return httpError(404, 'No payment found for that id');
+  const description = err.error?.description || 'Payment gateway lookup failed';
+  return httpError(502, description);
+}
+
+async function fetchPaymentTrace(rawId) {
+  const id = String(rawId || '').trim();
+  if (!/^(pay|order|rfnd)_[A-Za-z0-9]+$/.test(id)) {
+    throw httpError(400, 'Enter a payment, order, or refund id');
+  }
+  const client = getRazorpayClient();
+  try {
+    let paymentIds = [];
+    if (id.startsWith('rfnd_')) {
+      const refund = await client.refunds.fetch(id);
+      if (!refund?.payment_id) throw httpError(404, 'No payment found for that id');
+      paymentIds = [refund.payment_id];
+    } else if (id.startsWith('order_')) {
+      const listed = await client.orders.fetchPayments(id);
+      paymentIds = (listed.items || []).map((item) => item.id).filter(Boolean).slice(0, 10);
+      if (!paymentIds.length) throw httpError(404, 'That order has no payments yet');
+    } else {
+      paymentIds = [id];
+    }
+
+    const payments = [];
+    for (const paymentId of paymentIds) {
+      const payment = await client.payments.fetch(paymentId);
+      let refunds = [];
+      try {
+        const listed = await client.payments.fetchMultipleRefund(payment.id, { count: 20 });
+        refunds = (listed.items || []).map(mapGatewayRefund);
+      } catch (err) {
+        if (Number(err.statusCode) && Number(err.statusCode) >= 500) throw err;
+      }
+      payments.push(mapGatewayPayment(payment, refunds));
+    }
+    return payments;
+  } catch (err) {
+    if (err.status) throw err;
+    throw gatewayLookupError(err);
+  }
+}
+
+async function syncPaymentTrace(rawId, actor) {
+  const traces = await fetchPaymentTrace(rawId);
+  const db = requireDb();
+  const results = [];
+
+  for (const trace of traces) {
+    const ors = [{ razorpayPaymentId: trace.id }];
+    if (trace.orderId) ors.push({ razorpayOrderId: trace.orderId });
+    const local = await db.collection('payments').findOne({ $or: ors });
+    const fullyRefunded = trace.status === 'refunded' || trace.refundStatus === 'full';
+    let syncedStatus = null;
+    if (local && fullyRefunded && local.status !== 'refunded') {
+      await markPaymentRefunded({
+        razorpayPaymentId: trace.id,
+        razorpayOrderId: local.razorpayOrderId || trace.orderId,
+        reason: trace.refunds.find((refund) => refund.reason)?.reason || 'gateway refund',
+        actor,
+      });
+      syncedStatus = 'refunded';
+    }
+    if (local) {
+      await db.collection('payments').updateOne(
+        { id: local.id },
+        {
+          $set: {
+            gatewayTrace: trace,
+            gatewaySyncedAt: utcnow(),
+            updatedAt: utcnow(),
+          },
+        }
+      );
+    }
+    await db.collection('payment_traces').updateOne(
+      { razorpayPaymentId: trace.id },
+      {
+        $set: {
+          razorpayPaymentId: trace.id,
+          razorpayOrderId: trace.orderId,
+          localPaymentId: local?.id || null,
+          gateway: trace,
+          updatedAt: utcnow(),
+        },
+        $setOnInsert: { createdAt: utcnow() },
+      },
+      { upsert: true }
+    );
+    results.push({
+      trace,
+      localPaymentId: local?.id || null,
+      localStatus: syncedStatus || local?.status || null,
+      inLedger: Boolean(local),
+      syncedStatus,
+    });
+  }
+
+  return results;
+}
+
 async function markPaymentRefunded({
   razorpayOrderId,
   razorpayPaymentId,
@@ -674,36 +833,154 @@ async function markPaymentRefunded({
   actor,
 } = {}) {
   const db = requireDb();
-  const query = {};
-  if (razorpayPaymentId) query.razorpayPaymentId = razorpayPaymentId;
-  else if (razorpayOrderId) query.razorpayOrderId = razorpayOrderId;
-  else return null;
+  const ors = [];
+  if (razorpayPaymentId) ors.push({ razorpayPaymentId });
+  if (razorpayOrderId) ors.push({ razorpayOrderId });
+  if (!ors.length) return null;
 
-  const payment = await db.collection('payments').findOne(query);
+  const payment = await db.collection('payments').findOne(
+    ors.length === 1 ? ors[0] : { $or: ors }
+  );
   if (!payment) return null;
   if (payment.status === 'refunded') return payment;
 
+  const patch = {
+    status: 'refunded',
+    refundReason: reason || '',
+    refundedAt: utcnow(),
+    updatedAt: utcnow(),
+  };
+  if (razorpayPaymentId && !payment.razorpayPaymentId) {
+    patch.razorpayPaymentId = razorpayPaymentId;
+  }
+
   await db.collection('payments').updateOne(
     { id: payment.id },
-    {
-      $set: {
-        status: 'refunded',
-        refundReason: reason || '',
-        refundedAt: utcnow(),
-        updatedAt: utcnow(),
-      },
-    }
+    { $set: patch }
   );
   await db.collection('orders').updateOne(
     { razorpayOrderId: payment.razorpayOrderId },
     { $set: { status: 'refunded', updatedAt: utcnow() } }
   );
+  const customerReason = customerRefundReason(reason);
+  if (payment.customerEmail) {
+    const vars = {
+      customerName: payment.customerName || payment.customerEmail,
+      planName: payment.description,
+      amountInr: payment.amounts?.total,
+      reason: customerReason,
+      paymentId: razorpayPaymentId || payment.razorpayPaymentId || payment.id,
+      ctaUrl: `${config.frontendUrl}/dashboard/billing`,
+    };
+    try {
+      await enqueueEmail({
+        to: payment.customerEmail,
+        template: 'payment.refunded',
+        vars,
+        actor,
+      });
+    } catch (_) {}
+    try {
+      await enqueueWhatsApp({
+        toEmail: payment.customerEmail,
+        template: 'payment.refunded',
+        vars,
+        actor,
+      });
+    } catch (_) {}
+  }
   await writeAudit(actor || { email: 'system', role: 'system' }, 'payment.refunded', {
     resource: { type: 'payment', id: payment.id },
     meta: { reason, razorpayPaymentId: razorpayPaymentId || payment.razorpayPaymentId },
     tone: 'warning',
   });
   return db.collection('payments').findOne({ id: payment.id });
+}
+
+function customerRefundReason(reason) {
+  const text = String(reason || '').trim();
+  if (!text || /^(refund|payment)\./i.test(text) || text === 'gateway refund') return '';
+  return text;
+}
+
+function toCustomerPayment(payment) {
+  const trace = payment.gatewayTrace || null;
+  const refunds = Array.isArray(trace?.refunds) ? trace.refunds : [];
+  return {
+    id: payment.id,
+    status: payment.status || 'created',
+    purpose: payment.purpose || null,
+    description: payment.description || '',
+    amounts: payment.amounts || null,
+    currency: payment.currency || 'INR',
+    invoiceId: payment.invoiceId || null,
+    razorpayOrderId: payment.razorpayOrderId || null,
+    razorpayPaymentId: payment.razorpayPaymentId || null,
+    paidAt: payment.paidAt || null,
+    createdAt: payment.createdAt || null,
+    refundedAt: payment.refundedAt || null,
+    refundReason: payment.refundReason && customerRefundReason(payment.refundReason)
+      ? payment.refundReason
+      : refunds.find((refund) => refund.reason)?.reason || null,
+    at: payment.paidAt || payment.refundedAt || payment.createdAt || null,
+    gateway: trace
+      ? {
+          status: trace.status || null,
+          captured: Boolean(trace.captured),
+          amountInr: trace.amountInr ?? null,
+          amountRefundedInr: trace.amountRefundedInr ?? null,
+          method: trace.method || null,
+          debitRrn: trace.debitRrn || null,
+          refunds: refunds.map((refund) => ({
+            id: refund.id,
+            amountInr: refund.amountInr,
+            status: refund.status,
+            reason: refund.reason || null,
+            createdAt: refund.createdAt || null,
+            creditRrn: refund.creditRrn || null,
+            speed: refund.speed || null,
+          })),
+        }
+      : null,
+  };
+}
+
+function needsGatewayRefresh(payment, now) {
+  if (!payment.razorpayPaymentId) return false;
+  const syncedAt = payment.gatewaySyncedAt ? new Date(payment.gatewaySyncedAt).getTime() : 0;
+  if (!syncedAt) return true;
+  const age = now - syncedAt;
+  if (payment.status === 'paid' || payment.status === 'created') return age >= 2 * 60 * 1000;
+  return age >= 6 * 60 * 60 * 1000;
+}
+
+async function listPaymentsForCustomer(email, { refresh = false, actor } = {}) {
+  const db = requireDb();
+  const normalized = normalizeEmail(email);
+  if (!normalized) return [];
+  const load = () => db.collection('payments')
+    .find({ customerEmail: normalized })
+    .sort({ paidAt: -1, createdAt: -1 })
+    .limit(50)
+    .toArray();
+
+  let rows = await load();
+  if (refresh) {
+    const now = Date.now();
+    const due = rows.filter((payment) => needsGatewayRefresh(payment, now)).slice(0, 12);
+    for (const payment of due) {
+      try {
+        await syncPaymentTrace(payment.razorpayPaymentId, actor);
+      } catch (_) {
+        await db.collection('payments').updateOne(
+          { id: payment.id },
+          { $set: { gatewaySyncedAt: utcnow(), updatedAt: utcnow() } }
+        );
+      }
+    }
+    if (due.length) rows = await load();
+  }
+  return rows.map(toCustomerPayment);
 }
 
 module.exports = {
@@ -715,5 +992,7 @@ module.exports = {
   capturePayment,
   markPaymentFailed,
   markPaymentRefunded,
+  syncPaymentTrace,
+  listPaymentsForCustomer,
   applySideEffects,
 };

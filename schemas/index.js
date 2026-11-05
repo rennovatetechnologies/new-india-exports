@@ -426,6 +426,10 @@ const adminPaymentsQuerySchema = z.object({
   q: optionalString(200),
 });
 
+const adminGatewayTraceQuerySchema = z.object({
+  id: z.string().trim().regex(/^(pay|order|rfnd)_[A-Za-z0-9]+$/, 'Enter a payment, order, or refund id').max(64),
+});
+
 const emailOutboxQuerySchema = z.object({
   status: optionalString(40),
 });
@@ -596,6 +600,7 @@ module.exports = {
   emailOutboxRetrySchema,
   auditQuerySchema,
   adminPaymentsQuerySchema,
+  adminGatewayTraceQuerySchema,
   emailOutboxQuerySchema,
   transcriptsQuerySchema,
   communitySettingsSchema,

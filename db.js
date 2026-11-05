@@ -167,6 +167,7 @@ async function ensureIndexes() {
         partialFilterExpression: { razorpayPaymentId: { $type: 'string' } },
       }
     );
+    await db.collection('payment_traces').createIndex({ razorpayPaymentId: 1 }, { unique: true });
     await db.collection('invoices').createIndex({ id: 1 }, { unique: true });
     await db.collection('invoices').createIndex({ paymentId: 1 }, { unique: true });
     await db.collection('invoices').createIndex({ invoiceNumber: 1 }, { unique: true });

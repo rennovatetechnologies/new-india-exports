@@ -66,6 +66,7 @@ const SUBJECTS = {
   'payment.receipt': 'Payment confirmed — {{planName}}',
   'payment.invoice': 'Tax Invoice {{invoiceNumber}} — New India Export',
   'payment.failed': 'We could not complete your payment',
+  'payment.refunded': 'Your payment has been refunded',
   'payment.ops_alert': 'New paid customer: {{customer}} · {{planName}}',
   'payment.installment_schedule': 'Installment {{installmentNumber}} of {{installmentCount}} received — {{title}}',
   'payment.reminder': 'Payment reminder: installment {{installmentNumber}} of {{installmentCount}} — {{title}}',
@@ -429,6 +430,19 @@ function builtInBodies(template, v) {
         text: `Hi ${hi},\n\nTax Invoice ${v.invoiceNumber || ''}\nSeller: ${v.sellerLegalName || config.seller.legalName} (${v.sellerGstin || config.seller.gstin})\nDescription: ${v.description || ''}\nTaxable: ${money(v.taxableAmount)}\nGST: ${money(v.gstTotal)}\nGrand total: ${money(v.grandTotal)}\n\nPDF attached.`,
       };
     }
+
+    case 'payment.refunded':
+      return {
+        title: 'Payment refunded',
+        preheader: 'The amount is going back to the same bank or UPI account.',
+        ctaLabel: 'View your payments',
+        html: `
+          <p style="margin:0 0 14px">Hi ${hi},</p>
+          <p style="margin:0 0 14px">A refund has been recorded${v.planName ? ` for <strong>${escapeHtml(v.planName)}</strong>` : ''}${v.amountInr != null ? ` of <strong>${money(v.amountInr)}</strong>` : ''}.</p>
+          ${v.reason ? `<p style="margin:0 0 14px"><strong>Details:</strong> ${escapeHtml(v.reason)}</p>` : ''}
+          <p style="margin:0">The credit returns to the same bank or UPI account. It can take a few working days to appear. You can follow the status and bank references from Billing.</p>`,
+        text: `Hi ${hi},\n\nA refund has been recorded${v.planName ? ` for ${v.planName}` : ''}${v.amountInr != null ? ` of ${money(v.amountInr)}` : ''}.\n${v.reason ? `Details: ${v.reason}\n` : ''}\nThe credit returns to the same bank or UPI account and can take a few working days. Track it from Billing.`,
+      };
 
     case 'payment.failed':
       return {
@@ -817,6 +831,7 @@ function defaultCta(template, vars) {
     'payment.receipt': `${base}/dashboard`,
     'payment.invoice': `${base}/dashboard/billing`,
     'payment.failed': `${base}/dashboard/billing`,
+    'payment.refunded': `${base}/dashboard/billing`,
     'payment.installment_schedule': `${base}/dashboard/events`,
     'payment.reminder': `${base}/dashboard/events`,
     'payment.overdue': `${base}/dashboard/events`,
