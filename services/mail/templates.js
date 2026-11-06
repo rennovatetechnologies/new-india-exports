@@ -200,7 +200,7 @@ function layout({ title, preheader, bodyHtml, ctaUrl, ctaLabel, attachmentHtml }
       <table role="presentation" width="100%" style="max-width:580px;background:#FFFcf7;border:1px solid #E7DFD2;border-radius:10px;overflow:hidden">
         <tr>
           <td style="padding:22px 28px 18px;border-bottom:1px solid #EFE8DC;background:linear-gradient(180deg,#FFFcf7 0%,#F9F4EA 100%)">
-            <img src="cid:${LOGO_CID}" alt="${brand}" width="200" height="70" style="display:block;width:200px;height:auto;max-width:200px;border:0;outline:none;text-decoration:none"/>
+            <img src="cid:${LOGO_CID}" alt="${brand}" width="120" height="80" style="display:block;width:120px;height:auto;max-width:120px;border:0;outline:none;text-decoration:none"/>
           </td>
         </tr>
         <tr>

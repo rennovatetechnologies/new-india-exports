@@ -23,7 +23,7 @@ function renderInvoicePdf(invoice) {
     let headerBottom = 50;
 
     if (logoPath) {
-      const logoW = 200;
+      const logoW = 120;
       const logoH = logoW * LOGO_ASPECT;
       doc.image(logoPath, margin, 40, { width: logoW, height: logoH });
       headerBottom = 40 + logoH + 12;

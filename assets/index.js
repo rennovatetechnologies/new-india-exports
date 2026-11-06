@@ -4,8 +4,8 @@ const path = require('path');
 const LOGO_PATH = path.join(__dirname, 'Logo.png');
 const LOGO_CID = 'virastra-logo';
 /** Native Logo.png size — keep in sync if the file is replaced. */
-const LOGO_WIDTH_PX = 1820;
-const LOGO_HEIGHT_PX = 638;
+const LOGO_WIDTH_PX = 1219;
+const LOGO_HEIGHT_PX = 810;
 const LOGO_ASPECT = LOGO_HEIGHT_PX / LOGO_WIDTH_PX;
 
 function getLogoPath() {
