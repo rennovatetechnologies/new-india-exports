@@ -206,6 +206,23 @@ router.post(
 );
 
 router.get(
+  '/payments/checkout-status',
+  protect,
+  asyncHandler(async (req, res) => {
+    const orderId = String(req.query.orderId || '').trim();
+    if (!/^order_[A-Za-z0-9]+$/.test(orderId)) {
+      return res.status(400).json({ success: false, message: 'Enter an order id' });
+    }
+    const data = await payments.checkoutStatusForCustomer({
+      email: req.user?.email,
+      razorpayOrderId: orderId,
+      actor: actorFromReq(req),
+    });
+    return res.json({ success: true, data });
+  })
+);
+
+router.get(
   '/payments/me',
   protect,
   asyncHandler(async (req, res) => {

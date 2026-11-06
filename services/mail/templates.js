@@ -447,14 +447,14 @@ function builtInBodies(template, v) {
     case 'payment.failed':
       return {
         title: 'Payment unsuccessful',
-        preheader: 'No amount was captured. You can try again anytime.',
+        preheader: 'Access was not activated. A bank debit is returned in 5–7 business days.',
         ctaLabel: 'Try payment again',
         html: `
           <p style="margin:0 0 14px">Hi ${hi},</p>
-          <p style="margin:0 0 14px">We could not complete your payment${v.planName ? ` for <strong>${escapeHtml(v.planName)}</strong>` : ''}. No amount has been captured for this attempt.</p>
-          ${v.reason ? `<p style="margin:0 0 14px"><strong>Details:</strong> ${escapeHtml(v.reason)}</p>` : ''}
-          <p style="margin:0">You can retry securely from your dashboard. If money was deducted by your bank but the plan is still unpaid, reply to this email with your payment reference and we will help reconcile it.</p>`,
-        text: `Hi ${hi},\n\nYour payment was unsuccessful${v.planName ? ` for ${v.planName}` : ''}. No amount was captured.\n${v.reason ? `Details: ${v.reason}\n` : ''}\nRetry from your dashboard or contact ${support}.`,
+          <p style="margin:0 0 14px">We could not complete your payment${v.planName ? ` for <strong>${escapeHtml(v.planName)}</strong>` : ''}. Your access was not activated.</p>
+          <p style="margin:0 0 14px">If your bank or UPI app already deducted the money, it is credited back to the same account within 5–7 business days. You will not be charged twice.</p>
+          <p style="margin:0">You can try again from your dashboard whenever you are ready.</p>`,
+        text: `Hi ${hi},\n\nYour payment was unsuccessful${v.planName ? ` for ${v.planName}` : ''}. Access was not activated.\nIf your bank already deducted the money, it is credited back to the same account within 5–7 business days.\nYou can try again from your dashboard.`,
       };
 
     case 'payment.ops_alert':

@@ -116,7 +116,7 @@ ${signOff()}`;
 
     case 'payment.failed':
       return withCta(
-        `Hi ${hi},\n\nWe couldn’t complete your payment${v.planName ? ` for *${v.planName}*` : ''}. *No amount was captured* for this attempt.\n${v.reason ? `\nDetails: ${v.reason}\n` : ''}\nYou can retry securely from your dashboard. If your bank deducted money, reply with the payment reference and we’ll reconcile it.`,
+        `Hi ${hi},\n\nWe couldn’t complete your payment${v.planName ? ` for *${v.planName}*` : ''}. Your access was *not* activated.\n\nIf your bank or UPI app already deducted the money, it is credited back to the same account within *5–7 business days*. You will not be charged twice.\n\nYou can try again from your dashboard.`,
         template,
         { ...v, ctaLabel: 'Try payment again' }
       );

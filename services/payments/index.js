@@ -640,7 +640,9 @@ async function markPaymentFailed({ razorpayOrderId, reason, actor }) {
   const db = requireDb();
   const payment = await db.collection('payments').findOne({ razorpayOrderId });
   if (!payment) return null;
-  if (payment.status === 'paid') return payment;
+  if (payment.status === 'paid' || payment.status === 'failed' || payment.status === 'refunded') {
+    return payment;
+  }
   await db.collection('payments').updateOne(
     { id: payment.id },
     { $set: { status: 'failed', failReason: reason || '', updatedAt: utcnow() } }
@@ -983,6 +985,74 @@ async function listPaymentsForCustomer(email, { refresh = false, actor } = {}) {
   return rows.map(toCustomerPayment);
 }
 
+async function checkoutStatusForCustomer({ email, razorpayOrderId, actor } = {}) {
+  const db = requireDb();
+  const normalized = normalizeEmail(email);
+  const local = normalized
+    ? await db.collection('payments').findOne({ razorpayOrderId, customerEmail: normalized })
+    : null;
+  if (!local) throw httpError(404, 'No payment found for that order');
+
+  const summary = {
+    status: local.status || 'created',
+    paymentId: local.id,
+    amountInr: local.amounts?.total ?? null,
+    description: local.description || '',
+    bankReversal: false,
+  };
+  if (local.status === 'paid') return { ...summary, status: 'paid' };
+  if (local.status === 'refunded') return { ...summary, status: 'refunded', bankReversal: true };
+
+  let items = [];
+  try {
+    const client = getRazorpayClient();
+    const listed = await client.orders.fetchPayments(razorpayOrderId);
+    items = listed.items || [];
+  } catch (_) {
+    if (local.status === 'failed') return { ...summary, status: 'failed', bankReversal: true };
+    return { ...summary, status: 'pending' };
+  }
+
+  const captured = items.find((item) => item.status === 'captured' || item.captured);
+  if (captured) {
+    const result = await capturePayment({
+      razorpayOrderId,
+      razorpayPaymentId: captured.id,
+      source: 'checkout-poll',
+      actor,
+    });
+    return {
+      status: 'paid',
+      paymentId: result.payment?.id || local.id,
+      amountInr: local.amounts?.total ?? null,
+      description: local.description || '',
+      bankReversal: false,
+      razorpayPaymentId: captured.id,
+    };
+  }
+
+  const failed = items.find((item) => item.status === 'failed' || item.status === 'refunded');
+  if (failed) {
+    if (failed.status === 'refunded' || Number(failed.amount_refunded) > 0) {
+      await markPaymentRefunded({
+        razorpayOrderId,
+        razorpayPaymentId: failed.id,
+        reason: failed.error_description || 'gateway refund',
+        actor,
+      });
+      return { ...summary, status: 'refunded', bankReversal: true };
+    }
+    await markPaymentFailed({
+      razorpayOrderId,
+      reason: failed.error_description || 'payment.failed',
+      actor,
+    });
+    return { ...summary, status: 'failed', bankReversal: true };
+  }
+
+  return { ...summary, status: 'pending' };
+}
+
 module.exports = {
   getRazorpayClient,
   verifyPaymentSignature,
@@ -994,5 +1064,6 @@ module.exports = {
   markPaymentRefunded,
   syncPaymentTrace,
   listPaymentsForCustomer,
+  checkoutStatusForCustomer,
   applySideEffects,
 };
