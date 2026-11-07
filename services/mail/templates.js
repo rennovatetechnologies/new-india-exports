@@ -247,7 +247,7 @@ function loadFileTemplate(template, ext) {
 function builtInBodies(template, v) {
   const hi = greetingName(v);
   const caseLine = v.caseId ? `Case reference: <strong>${escapeHtml(v.caseId)}</strong>` : '';
-  const support = escapeHtml(config.supportEmail || 'support@virastrainternationalexport.com');
+  const support = escapeHtml(config.supportEmail || 'Virastrabynie@gmail.com');
 
   switch (template) {
     case 'auth.otp':

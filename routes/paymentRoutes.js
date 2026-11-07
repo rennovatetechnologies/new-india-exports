@@ -291,6 +291,7 @@ router.get(
       appName: config.appName,
       supportEmail: config.supportEmail,
       supportWhatsApp: config.supportWhatsApp,
+      supportPhone: config.supportPhone,
       gstRate: config.gstRate,
       installmentThresholdInr: config.installmentThresholdInr,
       installmentCount: config.installmentCount,

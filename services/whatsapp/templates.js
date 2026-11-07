@@ -9,8 +9,8 @@ function firstName(vars) {
 }
 
 function supportLine() {
-  const s = config.supportEmail || config.mailReplyTo || 'support@virastrainternationalexport.com';
-  const wa = config.supportWhatsAppDisplay || '+91 99670 84149';
+  const s = config.supportEmail || config.mailReplyTo || 'Virastrabynie@gmail.com';
+  const wa = config.supportWhatsAppDisplay || '+91 63965 15115';
   return `Need help? ${s} or WhatsApp ${wa}`;
 }
 

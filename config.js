@@ -155,12 +155,18 @@ const config = {
 
   resendApiKey: process.env.RESEND_API_KEY || '',
   mailFrom: process.env.MAIL_FROM || 'VIRASTRA by New India Export <noreply@virastrainternationalexport.com>',
-  mailReplyTo: process.env.MAIL_REPLY_TO || 'support@virastrainternationalexport.com',
+  mailReplyTo: process.env.MAIL_REPLY_TO || 'Virastrabynie@gmail.com',
   opsInbox: process.env.OPS_INBOX || 'ops@virastrainternationalexport.com',
   adminInbox: process.env.ADMIN_INBOX || 'admin@virastrainternationalexport.com',
-  supportEmail: process.env.SUPPORT_EMAIL || 'support@virastrainternationalexport.com',
+  supportEmail: process.env.SUPPORT_EMAIL || 'Virastrabynie@gmail.com',
   supportWhatsApp: (() => {
-    const d = String(process.env.SUPPORT_WHATSAPP || '9967084149').replace(/\D/g, '');
+    const d = String(process.env.SUPPORT_WHATSAPP || '6396515115').replace(/\D/g, '');
+    if (d.length === 12 && d.startsWith('91')) return d.slice(2);
+    if (d.length >= 10) return d.slice(-10);
+    return '6396515115';
+  })(),
+  supportPhone: (() => {
+    const d = String(process.env.SUPPORT_PHONE || '9967084149').replace(/\D/g, '');
     if (d.length === 12 && d.startsWith('91')) return d.slice(2);
     if (d.length >= 10) return d.slice(-10);
     return '9967084149';
@@ -241,11 +247,18 @@ const config = {
     return false;
   },
   get supportWhatsAppDisplay() {
-    const d = this.supportWhatsApp || '9967084149';
+    const d = this.supportWhatsApp || '6396515115';
     return `+91 ${d.slice(0, 5)} ${d.slice(5)}`;
   },
   get supportWhatsAppE164() {
-    return `91${this.supportWhatsApp || '9967084149'}`;
+    return `91${this.supportWhatsApp || '6396515115'}`;
+  },
+  get supportPhoneDisplay() {
+    const d = this.supportPhone || '9967084149';
+    return `+91 ${d.slice(0, 5)} ${d.slice(5)}`;
+  },
+  get supportPhoneE164() {
+    return `91${this.supportPhone || '9967084149'}`;
   },
   get workshopInr() {
     if (process.env.WORKSHOP_AMOUNT_INR) return this.workshopAmountInr;
