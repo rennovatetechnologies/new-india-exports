@@ -257,7 +257,7 @@ One-time bucket tree setup: `npm run gcs:init`.
 
 ## Auth, payments, mail
 
-**Login.** The user asks for an email OTP (`POST /api/auth/otp/send`). Default lifetime is 10 minutes, and sends are rate-limited (5 per window). Verifying the code returns a JWT. Default token life is 2 hours (`JWT_EXPIRE_HOURS`). The browser stores it as `vistara_token`. Staff can also log in with the staff routes. Admin satisfies routes that allow either `admin` or `operations`.
+**Login.** The user asks for an email OTP (`POST /api/auth/otp/send`). Default lifetime is 10 minutes, and sends are rate-limited (5 per window). Verifying the code returns a JWT. Default token life is 24 hours (`JWT_EXPIRE_HOURS`). The browser stores it as `vistara_token`. Staff can also log in with the staff routes. Admin satisfies routes that allow either `admin` or `operations`.
 
 **Payments.** The browser gets the Razorpay publishable key from `GET /api/config/public` (and, as a fallback, `VITE_RAZORPAY_KEY_ID`). The secret and webhook secret stay on the API. Checkout creates an order, the browser completes Razorpay, then the API verifies the payment. Razorpay also calls `POST /api/webhooks/razorpay`. That route is registered before the JSON body parser so the signature can be checked against the raw body (`X-Razorpay-Signature`). Local and dev use Razorpay **test** keys (`rzp_test_…`). Production uses **live** keys (`rzp_live_…`).
 

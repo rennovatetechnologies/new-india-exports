@@ -86,7 +86,7 @@ const config = {
   mongodbDbNameNonprod: process.env.MONGODB_DB_NAME_NONPROD || 'virastra_nonprod',
   mongodbDbNameProd: process.env.MONGODB_DB_NAME_PROD || 'virastra_prod',
   jwtSecret: process.env.JWT_SECRET || 'dev-only-change-me-in-production',
-  jwtExpireHours: parseInt(process.env.JWT_EXPIRE_HOURS || '2', 10),
+  jwtExpireHours: parseInt(process.env.JWT_EXPIRE_HOURS || '24', 10),
   corsOrigins: uniqueOrigins(
     splitOrigins(
       process.env.CORS_ORIGINS ||
