@@ -59,19 +59,37 @@ function uniqueOrigins(...lists) {
   return out;
 }
 
+// Source: Form GST REG-06 — Registration Number 09FEPPS8330B1Z4
 const seller = {
-  legalName: 'New India Export',
+  legalName: 'GAYATRI SHARMA',
+  tradeName: 'VISTARA INTERNATIONAL EXPORT',
+  additionalTradeName: 'VIRASTRA INTERNATIONAL EXPORT',
   brandName: 'VIRASTRA by New India Export',
-  gstin: '27AXGPY3435Q1ZK',
+  gstin: '09FEPPS8330B1Z4',
   addressLines: [
-    '1ST FLOOR SHOP NO M-02',
-    'PREMIUM PLAZA COMMERCIAL COMPLEX',
-    'MATA MANDIR ROAD NEAR CHHOTI LAHORI',
-    'DHARAMPETH NAGPUR-440010',
+    '7TH FLOOR, FLAT NO 704 BLOCK 2 O',
+    'AWHO HOUSING SOCIETY, GURJINDER VIHAR',
+    'NEAR YATHARTH HOSPITAL, GREATER NOIDA',
+    'GAUTAMBUDDHA NAGAR, UTTAR PRADESH - 201310',
   ],
-  state: 'Maharashtra',
-  stateCode: '27',
-  placeOfSupply: 'Maharashtra',
+  state: 'Uttar Pradesh',
+  stateCode: '09',
+  placeOfSupply: 'Uttar Pradesh',
+  constitution: 'Proprietorship',
+  // Invoice-format terms retain Nagpur jurisdiction wording.
+  jurisdiction: 'Nagpur, Maharashtra, India',
+  lineOfBusiness: 'Virastra by New India Export',
+  serviceReference: 'Invoice for Virastra Platform Services (Subscription / Recharge)',
+  paymentSuccessMessage:
+    'Your payment for Virastra by New India Export has been received successfully.',
+  terms: [
+    'The above amount is inclusive of all applicable taxes (GST, etc.).',
+    'This invoice is valid only for the specified service(s) under Virastra by New India Export.',
+    'The service is non-refundable and non-transferable once activated.',
+    'All claims and disputes are subject to the exclusive jurisdiction of the courts at Nagpur, Maharashtra, India.',
+    'In case of any discrepancy in this invoice, please contact our support within 7 (seven) days from the invoice date.',
+    'New India Export reserves the right to modify the service, pricing, or terms without prior notice.',
+  ],
 };
 
 const config = {

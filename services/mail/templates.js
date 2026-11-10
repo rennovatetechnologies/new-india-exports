@@ -64,7 +64,7 @@ const SUBJECTS = {
   'staff.access_rejected': 'Update on your staff access request',
   'staff.access_suspended': 'Your VIRASTRA by New India Export staff access has been suspended',
   'payment.receipt': 'Payment confirmed — {{planName}}',
-  'payment.invoice': 'Tax Invoice {{invoiceNumber}} — New India Export',
+  'payment.invoice': 'Tax Invoice {{invoiceNumber}} — {{sellerTradeName}}',
   'payment.failed': 'We could not complete your payment',
   'payment.refunded': 'Your payment has been refunded',
   'payment.ops_alert': 'New paid customer: {{customer}} · {{planName}}',
@@ -407,27 +407,72 @@ function builtInBodies(template, v) {
         taxMode === 'igst'
           ? [{ label: 'IGST', value: money(v.igst) }]
           : [
-              { label: 'CGST', value: money(v.cgst) },
-              { label: 'SGST', value: money(v.sgst) },
+              { label: `CGST @ ${v.cgstRate ?? 9}%`, value: money(v.cgst) },
+              { label: `SGST @ ${v.sgstRate ?? 9}%`, value: money(v.sgst) },
             ];
+      const sellerTrade = v.sellerTradeName || config.seller.tradeName;
+      const sellerLegal = v.sellerLegalName || config.seller.legalName;
+      const sellerGstin = v.sellerGstin || config.seller.gstin;
+      const sellerAddress = v.sellerAddress || (config.seller.addressLines || []).join(', ');
+      const lineOfBusiness =
+        v.lineOfBusiness || config.seller.lineOfBusiness || 'Virastra by New India Export';
+      const serviceReference =
+        v.serviceReference ||
+        config.seller.serviceReference ||
+        'Invoice for Virastra Platform Services (Subscription / Recharge)';
+      const paymentSuccessMessage =
+        v.paymentSuccessMessage ||
+        config.seller.paymentSuccessMessage ||
+        'Your payment for Virastra by New India Export has been received successfully.';
+      const terms = Array.isArray(v.terms) && v.terms.length ? v.terms : config.seller.terms || [];
+      const billTo = [v.customerName, v.customerPhone ? `(${v.customerPhone})` : '']
+        .filter(Boolean)
+        .join(' ');
+      const particulars = [
+        { label: 'Invoice No.', value: v.invoiceNumber },
+        { label: 'Invoice Date', value: v.invoiceDate },
+        { label: 'Due Date', value: v.dueDate },
+        { label: 'Bill To', value: billTo },
+        { label: 'Receipt No.', value: v.receiptNo || v.paymentId },
+        { label: 'Customer Name', value: v.customerName },
+        { label: 'Customer Number', value: v.customerPhone || v.customerEmail },
+        { label: 'Customer Email', value: v.customerEmail },
+        { label: 'Order Number', value: v.orderId || v.paymentId },
+        { label: 'Line of Business', value: lineOfBusiness },
+        { label: 'Payment Type', value: v.paymentType || 'Bill Payment | Subscription' },
+        { label: 'Payment Date & Time', value: v.paymentDateTime || v.invoiceDate },
+        { label: 'Payment Mode', value: v.paymentMode || 'Online' },
+        { label: 'HSN / SAC', value: v.hsnSac || '998599' },
+        { label: 'Place of Supply', value: v.placeOfSupply || config.seller.placeOfSupply },
+        { label: 'Taxable Value', value: money(v.taxableAmount) },
+        ...taxRows,
+        { label: 'GST total', value: money(v.gstTotal) },
+        { label: 'Paid Amount', value: money(v.grandTotal) },
+        { label: 'Total Paid Amount', value: `<strong>${money(v.grandTotal)}</strong>`, rawHtml: true },
+      ];
+      const termsHtml = terms.length
+        ? `<ol style="margin:8px 0 0;padding-left:18px;color:#44403C;font-size:12px;line-height:1.55">${terms
+            .map((t) => `<li style="margin:0 0 6px">${escapeHtml(t)}</li>`)
+            .join('')}</ol>`
+        : '';
+      const termsText = terms.map((t, i) => `${i + 1}. ${t}`).join('\n');
       return {
         title: `Tax invoice ${v.invoiceNumber || ''}`.trim(),
         preheader: `Invoice ${v.invoiceNumber || ''} · Total ${money(v.grandTotal)}`,
         ctaLabel: 'View invoices',
         html: `
           <p style="margin:0 0 14px">Hi ${hi},</p>
-          <p style="margin:0 0 14px">Please find your tax invoice from <strong>${escapeHtml(v.sellerLegalName || config.seller.legalName)}</strong> (GSTIN ${escapeHtml(v.sellerGstin || config.seller.gstin)}).</p>
-          ${detailRows([
-            { label: 'Invoice number', value: v.invoiceNumber },
-            { label: 'Description', value: v.description },
-            { label: 'Company', value: v.customerCompany },
-            { label: 'Taxable amount', value: money(v.taxableAmount) },
-            ...taxRows,
-            { label: 'GST total', value: money(v.gstTotal) },
-            { label: 'Grand total', value: `<strong>${money(v.grandTotal)}</strong>`, rawHtml: true },
-          ])}
-          <p style="margin:16px 0 0">The PDF invoice is attached for your books. You can also download it anytime from your account.</p>`,
-        text: `Hi ${hi},\n\nTax Invoice ${v.invoiceNumber || ''}\nSeller: ${v.sellerLegalName || config.seller.legalName} (${v.sellerGstin || config.seller.gstin})\nDescription: ${v.description || ''}\nTaxable: ${money(v.taxableAmount)}\nGST: ${money(v.gstTotal)}\nGrand total: ${money(v.grandTotal)}\n\nPDF attached.`,
+          <p style="margin:0 0 14px">Please find your tax invoice from <strong>${escapeHtml(sellerTrade)}</strong> (legal name ${escapeHtml(sellerLegal)}, GSTIN ${escapeHtml(sellerGstin)}).</p>
+          <p style="margin:0 0 14px;color:#57534E;font-size:13px;line-height:1.5">${escapeHtml(sellerAddress)}</p>
+          ${detailRows(particulars)}
+          <p style="margin:16px 0 6px;color:#166534;font-weight:600">Payment Successful</p>
+          <p style="margin:0 0 14px;color:#166534;font-size:13px">${escapeHtml(paymentSuccessMessage)}</p>
+          <p style="margin:0 0 4px;font-weight:600;color:#1C1917">Virastra Subscription / Service</p>
+          <p style="margin:0 0 16px;color:#57534E;font-size:13px">Reference: ${escapeHtml(serviceReference)}</p>
+          <p style="margin:0 0 4px;font-weight:600;color:#1C1917">Terms and Conditions</p>
+          ${termsHtml}
+          <p style="margin:16px 0 0">The PDF invoice with the same details is attached for your books. You can also download it anytime from your account.</p>`,
+        text: `Hi ${hi},\n\nTax Invoice ${v.invoiceNumber || ''}\nSeller: ${sellerTrade} / ${sellerLegal} (${sellerGstin})\nAddress: ${sellerAddress}\n\n${textDetails(particulars)}\n\nPayment Successful\n${paymentSuccessMessage}\n\nVirastra Subscription / Service\nReference: ${serviceReference}\n\nTerms and Conditions\n${termsText}\n\nPDF attached.`,
       };
     }
 
@@ -867,6 +912,10 @@ function renderTemplate(template, vars = {}) {
     supportWhatsApp: config.supportWhatsAppDisplay,
     supportWhatsAppE164: config.supportWhatsAppE164,
     appName: config.appName,
+    sellerLegalName: config.seller.legalName,
+    sellerTradeName: config.seller.tradeName,
+    sellerBrandName: config.seller.brandName,
+    sellerGstin: config.seller.gstin,
     ...vars,
   };
 

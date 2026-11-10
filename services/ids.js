@@ -38,7 +38,7 @@ async function newInvoiceId() {
 async function newInvoiceNumber() {
   const year = new Date().getUTCFullYear();
   const seq = await nextSeq(`invoice_num_${year}`);
-  return `NIE/${year}/${pad(seq, 6)}`;
+  return `VIR/${year}/${pad(seq, 6)}`;
 }
 
 async function newMessageId() {

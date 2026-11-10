@@ -1,4 +1,37 @@
 <p style="margin:0 0 14px">Hi {{greetingName}},</p>
-<p style="margin:0 0 14px">Please find your tax invoice from <strong>{{sellerLegalName}}</strong> (GSTIN {{sellerGstin}}).</p>
-<p style="margin:0 0 8px"><strong>Invoice:</strong> {{invoiceNumber}}<br/><strong>Description:</strong> {{description}}<br/><strong>Taxable:</strong> {{taxableFormatted}}<br/><strong>GST total:</strong> {{gstTotal}}<br/><strong>Grand total:</strong> {{grandTotalFormatted}}</p>
-<p style="margin:16px 0 0">The PDF invoice is attached for your books. You can also download it anytime from your account.</p>
+<p style="margin:0 0 14px">Please find your tax invoice from <strong>{{sellerTradeName}}</strong> (legal name {{sellerLegalName}}, GSTIN {{sellerGstin}}).</p>
+<p style="margin:0 0 14px">{{sellerAddress}}</p>
+<p style="margin:0 0 8px">
+  <strong>Invoice No.:</strong> {{invoiceNumber}}<br/>
+  <strong>Invoice Date:</strong> {{invoiceDate}}<br/>
+  <strong>Due Date:</strong> {{dueDate}}<br/>
+  <strong>Bill To:</strong> {{customerName}} {{customerPhone}}<br/>
+  <strong>Receipt No.:</strong> {{receiptNo}}<br/>
+  <strong>Customer Name:</strong> {{customerName}}<br/>
+  <strong>Customer Number:</strong> {{customerPhone}}<br/>
+  <strong>Customer Email:</strong> {{customerEmail}}<br/>
+  <strong>Order Number:</strong> {{orderId}}<br/>
+  <strong>Line of Business:</strong> {{lineOfBusiness}}<br/>
+  <strong>Payment Type:</strong> {{paymentType}}<br/>
+  <strong>Payment Date &amp; Time:</strong> {{paymentDateTime}}<br/>
+  <strong>Payment Mode:</strong> {{paymentMode}}<br/>
+  <strong>HSN / SAC:</strong> {{hsnSac}}<br/>
+  <strong>Place of Supply:</strong> {{placeOfSupply}}<br/>
+  <strong>Taxable Value:</strong> {{taxableFormatted}}<br/>
+  <strong>CGST:</strong> {{cgst}}<br/>
+  <strong>SGST:</strong> {{sgst}}<br/>
+  <strong>GST total:</strong> {{gstTotal}}<br/>
+  <strong>Total Paid Amount:</strong> {{grandTotalFormatted}}
+</p>
+<p style="margin:16px 0 6px"><strong>Payment Successful</strong><br/>{{paymentSuccessMessage}}</p>
+<p style="margin:0 0 14px"><strong>Virastra Subscription / Service</strong><br/>Reference: {{serviceReference}}</p>
+<p style="margin:0 0 8px"><strong>Terms and Conditions</strong></p>
+<ol>
+  <li>The above amount is inclusive of all applicable taxes (GST, etc.).</li>
+  <li>This invoice is valid only for the specified service(s) under Virastra by New India Export.</li>
+  <li>The service is non-refundable and non-transferable once activated.</li>
+  <li>All claims and disputes are subject to the exclusive jurisdiction of the courts at Nagpur, Maharashtra, India.</li>
+  <li>In case of any discrepancy in this invoice, please contact our support within 7 (seven) days from the invoice date.</li>
+  <li>New India Export reserves the right to modify the service, pricing, or terms without prior notice.</li>
+</ol>
+<p style="margin:16px 0 0">The PDF invoice with the same details is attached for your books. You can also download it anytime from your account.</p>

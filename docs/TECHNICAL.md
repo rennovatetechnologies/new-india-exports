@@ -58,7 +58,7 @@ A customer has at most one open case. Closed cases do not block a new one.
 - Three service packs: **Basic**, **Standard**, and **Premium**. Each pack lists the registrations and documents it includes (KYC, Shop Act, MSME, IEC, GST, current account, AD code, RCMC, phytosanitary, DSC, DGFT, ICEGATE, and similar steps). Admins can edit plans. Plan records are kept identical in the non-production and production databases.
 - The customer selects a plan, then pays with Razorpay (card / UPI).
 - Amounts at or above ₹1,00,000 can be split into 3 installments (10-day gap, 30-day window). A reminder job chases due installments.
-- GST is 18% by default. A paid order produces a GST invoice (PDF) in the seller’s name, New India Export.
+- GST is 18% by default. A paid order produces a GST invoice (PDF) under GSTIN `09FEPPS8330B1Z4` (legal name Gayatri Sharma; trade name Vistara International Export / Virastra International Export). Invoice numbers use `VIR/YYYY/######`.
 - The customer can see subscription status, invoices, and download invoice PDF or CSV. Staff can see the payment ledger.
 
 ### KYC

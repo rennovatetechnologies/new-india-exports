@@ -299,8 +299,13 @@ router.get(
       installmentWindowDays: config.installmentWindowDays,
       seller: {
         legalName: config.seller.legalName,
+        tradeName: config.seller.tradeName,
+        brandName: config.seller.brandName,
         gstin: config.seller.gstin,
         address: (config.seller.addressLines || []).join(', '),
+        state: config.seller.state,
+        stateCode: config.seller.stateCode,
+        placeOfSupply: config.seller.placeOfSupply,
       },
       channels: publicChannelFlags(),
       communityAccess,

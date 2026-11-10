@@ -1,9 +1,42 @@
 Hi {{greetingName}},
 
 Tax Invoice {{invoiceNumber}}
-Seller: {{sellerLegalName}} ({{sellerGstin}})
-Description: {{description}}
-Taxable: {{taxableFormatted}}
-Grand total: {{grandTotalFormatted}}
+Seller: {{sellerTradeName}} / {{sellerLegalName}} ({{sellerGstin}})
+Address: {{sellerAddress}}
+
+Invoice No.: {{invoiceNumber}}
+Invoice Date: {{invoiceDate}}
+Due Date: {{dueDate}}
+Bill To: {{customerName}} {{customerPhone}}
+Receipt No.: {{receiptNo}}
+Customer Name: {{customerName}}
+Customer Number: {{customerPhone}}
+Customer Email: {{customerEmail}}
+Order Number: {{orderId}}
+Line of Business: {{lineOfBusiness}}
+Payment Type: {{paymentType}}
+Payment Date & Time: {{paymentDateTime}}
+Payment Mode: {{paymentMode}}
+HSN / SAC: {{hsnSac}}
+Place of Supply: {{placeOfSupply}}
+Taxable Value: {{taxableFormatted}}
+CGST: {{cgst}}
+SGST: {{sgst}}
+GST total: {{gstTotal}}
+Total Paid Amount: {{grandTotalFormatted}}
+
+Payment Successful
+{{paymentSuccessMessage}}
+
+Virastra Subscription / Service
+Reference: {{serviceReference}}
+
+Terms and Conditions
+1. The above amount is inclusive of all applicable taxes (GST, etc.).
+2. This invoice is valid only for the specified service(s) under Virastra by New India Export.
+3. The service is non-refundable and non-transferable once activated.
+4. All claims and disputes are subject to the exclusive jurisdiction of the courts at Nagpur, Maharashtra, India.
+5. In case of any discrepancy in this invoice, please contact our support within 7 (seven) days from the invoice date.
+6. New India Export reserves the right to modify the service, pricing, or terms without prior notice.
 
 PDF attached.
