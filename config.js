@@ -62,21 +62,20 @@ function uniqueOrigins(...lists) {
 // Source: Form GST REG-06 — Registration Number 09FEPPS8330B1Z4
 const seller = {
   legalName: 'GAYATRI SHARMA',
-  tradeName: 'VISTARA INTERNATIONAL EXPORT',
-  additionalTradeName: 'VIRASTRA INTERNATIONAL EXPORT',
+  tradeName: 'VIRASTRA INTERNATIONAL EXPORT',
+  additionalTradeName: 'VISTARA INTERNATIONAL EXPORT',
   brandName: 'VIRASTRA by New India Export',
   gstin: '09FEPPS8330B1Z4',
+  // GST invoice / billing address (Gautam Buddha Nagar, Uttar Pradesh).
   addressLines: [
-    '7TH FLOOR, FLAT NO 704 BLOCK 2 O',
-    'AWHO HOUSING SOCIETY, GURJINDER VIHAR',
-    'NEAR YATHARTH HOSPITAL, GREATER NOIDA',
-    'GAUTAMBUDDHA NAGAR, UTTAR PRADESH - 201310',
+    'Gautam Buddha Nagar',
+    'Uttar Pradesh',
   ],
   state: 'Uttar Pradesh',
   stateCode: '09',
   placeOfSupply: 'Uttar Pradesh',
   constitution: 'Proprietorship',
-  // Invoice-format terms retain Nagpur jurisdiction wording.
+  // Public website / office address is Nagpur; invoice jurisdiction matches.
   jurisdiction: 'Nagpur, Maharashtra, India',
   lineOfBusiness: 'Virastra by New India Export',
   serviceReference: 'Invoice for Virastra Platform Services (Subscription / Recharge)',

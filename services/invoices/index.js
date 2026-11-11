@@ -59,7 +59,7 @@ function sellerDisplayName(seller) {
     seller?.brandName ||
     seller?.legalName ||
     config.seller.tradeName ||
-    'VISTARA INTERNATIONAL EXPORT'
+    'VIRASTRA INTERNATIONAL EXPORT'
   );
 }
 
